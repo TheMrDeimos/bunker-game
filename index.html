@@ -6,6 +6,8 @@
 <title>БУНКЕР // Протокол выживания</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <style>
   :root{
     --bg-0:#111317;
@@ -306,6 +308,55 @@
     font-size:11px;
     padding:30px 20px 10px;
   }
+  .tabs{display:flex; gap:0; margin-bottom:16px; border-bottom:1px solid var(--line);}
+  .tab{
+    padding:10px 18px;
+    font-family:'Oswald',sans-serif;
+    letter-spacing:1.5px;
+    text-transform:uppercase;
+    font-size:13px;
+    color:var(--muted);
+    cursor:pointer;
+    border-bottom:2px solid transparent;
+    margin-bottom:-1px;
+  }
+  .tab.active{color:var(--amber); border-bottom-color:var(--amber);}
+  .room-badge{
+    display:inline-flex;
+    align-items:center;
+    gap:8px;
+    background:var(--bg-0);
+    border:1px solid var(--amber-dim);
+    padding:5px 12px;
+    border-radius:20px;
+    font-size:12px;
+    letter-spacing:1px;
+    color:var(--amber);
+    margin-top:8px;
+  }
+  .dot-live{
+    width:7px; height:7px; border-radius:50%;
+    background:var(--green);
+    box-shadow:0 0 6px var(--green);
+  }
+  .code-display{
+    font-family:'Oswald',sans-serif;
+    font-size:34px;
+    letter-spacing:8px;
+    color:var(--amber);
+    text-align:center;
+    padding:14px 0;
+  }
+  .error-msg{color:#e8a08c; font-size:13px; margin-top:6px;}
+  .config-warning{
+    background:#241a12;
+    border:1px solid var(--rust);
+    color:#f0c4a0;
+    padding:16px;
+    font-size:13px;
+    line-height:1.7;
+    border-radius:2px;
+  }
 </style>
 </head>
 <body>
@@ -318,9 +369,24 @@
 
 <main id="app"></main>
 
-<footer>ходы передаются по ссылке · без сервера · без регистрации</footer>
+<footer>живая синхронизация · Firebase Realtime Database · без своего сервера</footer>
 
 <script>
+/* ======================================================================
+   ВСТАВЬ СЮДА СВОЙ FIREBASE CONFIG
+   Firebase Console → Project settings (шестерёнка) → Your apps → </> Web → скопировать объект
+   ====================================================================== */
+const firebaseConfig = {
+  apiKey: "ВСТАВЬ_СЮДА",
+  authDomain: "ВСТАВЬ_СЮДА",
+  databaseURL: "ВСТАВЬ_СЮДА",
+  projectId: "ВСТАВЬ_СЮДА",
+  storageBucket: "ВСТАВЬ_СЮДА",
+  messagingSenderId: "ВСТАВЬ_СЮДА",
+  appId: "ВСТАВЬ_СЮДА"
+};
+/* ====================================================================== */
+
 const CATS = ["Профессия","Состояние здоровья","Хобби / навык","Фобия","Личный багаж","Секрет"];
 
 const POOLS = {
@@ -353,30 +419,9 @@ function shuffle(arr){
 }
 function pick(arr){return arr[Math.floor(Math.random()*arr.length)];}
 
-function b64EncodeUnicode(str){
-  return btoa(encodeURIComponent(str).replace(/%([0-9A-F]{2})/g,(m,p1)=>String.fromCharCode('0x'+p1)));
-}
-function b64DecodeUnicode(str){
-  return decodeURIComponent(atob(str).split('').map(c=>'%'+('00'+c.charCodeAt(0).toString(16)).slice(-2)).join(''));
-}
-
-function encodeState(s){ return b64EncodeUnicode(JSON.stringify(s)); }
-function decodeState(h){ return JSON.parse(b64DecodeUnicode(h)); }
-
-function getState(){
-  const h = location.hash.slice(1);
-  if(!h) return null;
-  try{ return decodeState(h); }catch(e){ return null; }
-}
-function setStateAndRender(s){
-  location.hash = encodeState(s);
-  render();
-}
-
 function activeIdx(s){
   return s.p.map((pl,i)=>i).filter(i=>!s.p[i].e);
 }
-
 function currentTurnPlayer(s){
   const act = activeIdx(s);
   return act[s.tp];
@@ -397,7 +442,7 @@ function makeGame(names){
     ph:"reveal",
     rd:1,
     tp:0,
-    vt:{}
+    vt:[null,null,null,null,null,null]
   };
 }
 
@@ -410,20 +455,20 @@ function advanceAfterReveal(s){
     if(s.rd > 3){
       s.ph = "vote";
       s.rd = 1;
-      s.vt = {};
+      s.vt = [null,null,null,null,null,null];
     }
   }
 }
 
 function tallyAndEliminate(s){
   const counts = {};
-  Object.values(s.vt).forEach(t=>{counts[t]=(counts[t]||0)+1;});
+  s.vt.forEach(t=>{ if(t!==null && t!==undefined) counts[t]=(counts[t]||0)+1; });
   let maxV=-1, target=null;
   Object.keys(counts).forEach(k=>{
     if(counts[k]>maxV){maxV=counts[k]; target=parseInt(k);}
   });
   if(target!==null){ s.p[target].e = true; }
-  s.vt = {};
+  s.vt = [null,null,null,null,null,null];
   s.tp = 0;
   const act = activeIdx(s);
   if(act.length <= 3){
@@ -443,6 +488,48 @@ function advanceAfterVote(s){
   return null;
 }
 
+/* ---------------- Firebase wiring ---------------- */
+
+let db = null;
+const configOk = firebaseConfig.apiKey && firebaseConfig.apiKey.indexOf("ВСТАВЬ") === -1;
+if(configOk){
+  firebase.initializeApp(firebaseConfig);
+  db = firebase.database();
+}
+
+let currentRoom = null;
+let currentOffFn = null;
+
+function genRoomCode(){
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let code = "";
+  for(let i=0;i<4;i++) code += chars[Math.floor(Math.random()*chars.length)];
+  return code;
+}
+
+function roomLink(code){
+  return location.origin + location.pathname + '?room=' + code;
+}
+
+function subscribeRoom(code){
+  if(currentOffFn) currentOffFn();
+  currentRoom = code;
+  const ref = db.ref('rooms/'+code);
+  const handler = (snap)=>{
+    const s = snap.val();
+    if(s) renderGame(s, code);
+    else renderRoomMissing(code);
+  };
+  ref.on('value', handler);
+  currentOffFn = ()=> ref.off('value', handler);
+}
+
+function pushState(s){
+  db.ref('rooms/'+currentRoom).set(s);
+}
+
+/* ---------------- DOM helpers ---------------- */
+
 function el(tag, attrs={}, children=[]){
   const e = document.createElement(tag);
   Object.entries(attrs).forEach(([k,v])=>{
@@ -452,50 +539,6 @@ function el(tag, attrs={}, children=[]){
   });
   (Array.isArray(children)?children:[children]).forEach(c=>{ if(c) e.appendChild(c); });
   return e;
-}
-
-function renderSetup(){
-  document.getElementById('statusLine').textContent = 'создание протокола · 6 участников';
-  const app = document.getElementById('app');
-  app.innerHTML = '';
-
-  const panel = el('div',{class:'panel', 'data-tag':'Новая симуляция'});
-  panel.appendChild(el('p',{text:'Впишите имена всех шестерых игроков. После создания вы получите ссылку — отправьте её первому игроку в чате.', html:null}));
-
-  const grid = el('div',{class:'grid6'});
-  const inputs = [];
-  for(let i=0;i<6;i++){
-    const wrap = el('div');
-    wrap.appendChild(el('label',{text:'Игрок '+(i+1)}));
-    const inp = el('input',{type:'text', placeholder:'Имя', value:''});
-    inp.value = '';
-    inp.setAttribute('maxlength','16');
-    inputs.push(inp);
-    wrap.appendChild(inp);
-    grid.appendChild(wrap);
-  }
-  panel.appendChild(grid);
-
-  const btn = el('button',{class:'primary', text:'Создать игру и получить ссылку'});
-  btn.onclick = ()=>{
-    const names = inputs.map((i,idx)=>i.value.trim() || ('Игрок '+(idx+1)));
-    const s = makeGame(names);
-    setStateAndRender(s);
-  };
-  panel.appendChild(el('div',{class:'row', style:'margin-top:6px'},[btn]));
-  app.appendChild(panel);
-
-  const rules = el('details');
-  const sum = el('summary',{text:'Правила'});
-  rules.appendChild(sum);
-  rules.appendChild(el('div',{class:'rules-body', html:`
-    Случилась катастрофа. У вас есть один бункер на троих и шесть претендентов на место.<br><br>
-    <b>Раскрытие (3 раунда).</b> По очереди каждый игрок открывает одну свою характеристику для всех — сначала профессию, затем здоровье, затем хобби. Фобия, багаж и секрет остаются в тени до конца.<br><br>
-    <b>Голосование (до 3 раундов).</b> Обсудите вслух или в чате, кто менее полезен для выживания группы, затем каждый по очереди голосует. Игрок с наибольшим числом голосов выбывает.<br><br>
-    <b>Финал.</b> Игра заканчивается, когда в бункере остаётся 3 человека.<br><br>
-    <span class="tiny">Важно: состояние игры хранится прямо в ссылке. Все данные технически видны в самой ссылке при желании её разобрать — это честная игра на доверии между друзьями, а не защищённая система.</span>
-  `}));
-  app.appendChild(rules);
 }
 
 function traitRow(catIdx, value, revealed){
@@ -518,7 +561,7 @@ function renderRoster(s, opts={}){
     const nameRow = el('div',{class:'pname'});
     nameRow.appendChild(el('span',{text:pl.n}));
     if(s.ph==='vote' && !pl.e){
-      const vc = Object.values(s.vt).filter(t=>t===i).length;
+      const vc = s.vt.filter(t=>t===i).length;
       if(vc>0) nameRow.appendChild(el('span',{class:'vote-count', text:vc+' ГОЛОС(А)'}));
     }
     card.appendChild(nameRow);
@@ -531,37 +574,145 @@ function renderRoster(s, opts={}){
   return roster;
 }
 
-function shareLink(){
-  return location.href;
-}
-
-function copyBtnRow(){
-  const wrap = el('div');
-  wrap.appendChild(el('p',{class:'tiny', text:'Скопируйте ссылку ниже и отправьте следующему игроку по очереди:'}));
-  const box = el('div',{class:'linkbox', text: shareLink()});
-  wrap.appendChild(box);
-  const row = el('div',{class:'row'});
-  const btn = el('button',{class:'primary', text:'Скопировать ссылку'});
+function roomBadgeRow(code){
+  const wrap = el('div',{class:'row', style:'justify-content:space-between; align-items:center;'});
+  const badge = el('div',{class:'room-badge'});
+  badge.appendChild(el('span',{class:'dot-live'}));
+  badge.appendChild(el('span',{text:'КОМНАТА '+code+' · ОНЛАЙН'}));
+  wrap.appendChild(badge);
+  const btn = el('button',{text:'Скопировать ссылку-приглашение'});
   const msg = el('span',{class:'copied-msg', text:''});
   btn.onclick = async ()=>{
-    try{
-      await navigator.clipboard.writeText(shareLink());
-      msg.textContent = '✓ скопировано';
-    }catch(e){
-      msg.textContent = 'скопируйте вручную выше';
-    }
+    try{ await navigator.clipboard.writeText(roomLink(code)); msg.textContent='✓ скопировано'; }
+    catch(e){ msg.textContent = roomLink(code); }
   };
-  row.appendChild(btn); row.appendChild(msg);
-  wrap.appendChild(row);
+  const right = el('div',{class:'row'},[btn, msg]);
+  wrap.appendChild(right);
   return wrap;
 }
 
-function render(){
-  const s = getState();
-  if(!s){ renderSetup(); return; }
+/* ---------------- Screens ---------------- */
 
+function renderConfigMissing(){
+  document.getElementById('statusLine').textContent = 'нужна настройка';
   const app = document.getElementById('app');
   app.innerHTML = '';
+  const panel = el('div',{class:'panel', 'data-tag':'Настройка не завершена'});
+  panel.appendChild(el('div',{class:'config-warning', html:
+    'Игра ещё не подключена к базе данных.<br><br>' +
+    'Открой этот файл в редакторе и вставь свой конфиг из Firebase Console в переменную <b>firebaseConfig</b> в самом начале блока &lt;script&gt;, затем сохрани и залей обновлённый файл на GitHub.'
+  }));
+  app.appendChild(panel);
+}
+
+function renderRoomMissing(code){
+  document.getElementById('statusLine').textContent = 'комната не найдена';
+  const app = document.getElementById('app');
+  app.innerHTML = '';
+  const panel = el('div',{class:'panel', 'data-tag':'Ошибка'});
+  panel.appendChild(el('p',{html:'Комната <b>'+code+'</b> не найдена или ещё не создана.'}));
+  const btn = el('button',{class:'primary', text:'Вернуться на главный экран'});
+  btn.onclick = ()=>{ history.replaceState(null,'', location.pathname); renderLobby(); };
+  panel.appendChild(btn);
+  app.appendChild(panel);
+}
+
+function renderLobby(){
+  document.getElementById('statusLine').textContent = 'ожидание · создайте или войдите в комнату';
+  const app = document.getElementById('app');
+  app.innerHTML = '';
+
+  const panel = el('div',{class:'panel', 'data-tag':'Новая симуляция'});
+
+  const tabs = el('div',{class:'tabs'});
+  const tabCreate = el('div',{class:'tab active', text:'Создать игру'});
+  const tabJoin = el('div',{class:'tab', text:'У меня есть код'});
+  tabs.appendChild(tabCreate); tabs.appendChild(tabJoin);
+  panel.appendChild(tabs);
+
+  const body = el('div',{id:'lobbyBody'});
+  panel.appendChild(body);
+  app.appendChild(panel);
+
+  function showCreate(){
+    tabCreate.className='tab active'; tabJoin.className='tab';
+    body.innerHTML='';
+    body.appendChild(el('p',{text:'Впишите имена всех шестерых игроков. Игра сразу заработает в реальном времени у всех, кто откроет ссылку-приглашение.'}));
+    const grid = el('div',{class:'grid6'});
+    const inputs = [];
+    for(let i=0;i<6;i++){
+      const wrap = el('div');
+      wrap.appendChild(el('label',{text:'Игрок '+(i+1)}));
+      const inp = el('input',{type:'text', placeholder:'Имя'});
+      inp.setAttribute('maxlength','16');
+      inputs.push(inp);
+      wrap.appendChild(inp);
+      grid.appendChild(wrap);
+    }
+    body.appendChild(grid);
+    const btn = el('button',{class:'primary', text:'Создать игру'});
+    const err = el('div',{class:'error-msg', text:''});
+    btn.onclick = ()=>{
+      const names = inputs.map((i,idx)=>i.value.trim() || ('Игрок '+(idx+1)));
+      const s = makeGame(names);
+      const code = genRoomCode();
+      db.ref('rooms/'+code).set(s).then(()=>{
+        history.replaceState(null,'', location.pathname + '?room=' + code);
+        subscribeRoom(code);
+      }).catch(e=>{ err.textContent = 'Ошибка записи в базу: '+e.message; });
+    };
+    body.appendChild(el('div',{class:'row', style:'margin-top:6px'},[btn]));
+    body.appendChild(err);
+  }
+
+  function showJoin(){
+    tabJoin.className='tab active'; tabCreate.className='tab';
+    body.innerHTML='';
+    body.appendChild(el('p',{text:'Введите 4-значный код комнаты, который прислал организатор игры.'}));
+    const inp = el('input',{type:'text', placeholder:'НАПР. A4F2', style:'text-transform:uppercase; letter-spacing:4px; text-align:center; font-size:20px;'});
+    inp.setAttribute('maxlength','4');
+    body.appendChild(inp);
+    const btn = el('button',{class:'primary', text:'Войти в игру'});
+    const err = el('div',{class:'error-msg', text:''});
+    btn.onclick = ()=>{
+      const code = inp.value.trim().toUpperCase();
+      if(code.length!==4){ err.textContent='Код должен состоять из 4 символов.'; return; }
+      db.ref('rooms/'+code).get().then(snap=>{
+        if(snap.exists()){
+          history.replaceState(null,'', location.pathname + '?room=' + code);
+          subscribeRoom(code);
+        } else {
+          err.textContent = 'Комната с таким кодом не найдена.';
+        }
+      }).catch(e=>{ err.textContent = 'Ошибка: '+e.message; });
+    };
+    body.appendChild(el('div',{class:'row', style:'margin-top:10px'},[btn]));
+    body.appendChild(err);
+  }
+
+  tabCreate.onclick = showCreate;
+  tabJoin.onclick = showJoin;
+  showCreate();
+
+  const rules = el('details');
+  rules.appendChild(el('summary',{text:'Правила'}));
+  rules.appendChild(el('div',{class:'rules-body', html:`
+    Случилась катастрофа. У вас есть один бункер на троих и шесть претендентов на место.<br><br>
+    <b>Раскрытие (3 раунда).</b> По очереди каждый игрок открывает одну свою характеристику для всех — сначала профессию, затем здоровье, затем хобби. Фобия, багаж и секрет остаются в тени до конца.<br><br>
+    <b>Голосование (до 3 раундов).</b> Обсудите вслух или в чате, кто менее полезен для выживания группы, затем каждый по очереди голосует. Игрок с наибольшим числом голосов выбывает.<br><br>
+    <b>Финал.</b> Игра заканчивается, когда в бункере остаётся 3 человека.<br><br>
+    <span class="tiny">Все данные хранятся в общей базе данных на время игры — это игра на доверии между друзьями, а не защищённая система.</span>
+  `}));
+  app.appendChild(rules);
+}
+
+function renderGame(s, code){
+  const app = document.getElementById('app');
+  app.innerHTML = '';
+
+  const badgePanel = el('div',{class:'panel', style:'padding:12px 20px;'});
+  badgePanel.appendChild(roomBadgeRow(code));
+  app.appendChild(badgePanel);
 
   const alertPanel = el('div',{class:'panel', 'data-tag':'Сводка ситуации'});
   alertPanel.appendChild(el('div',{class:'alert-ticker', html:'<b>ТРЕВОГА:</b> '+s.c}));
@@ -591,7 +742,6 @@ function render(){
     return;
   }
 
-  const act = activeIdx(s);
   const turnIdx = currentTurnPlayer(s);
   const turnName = s.p[turnIdx].n;
 
@@ -609,7 +759,7 @@ function render(){
 
   const actionPanel = el('div',{class:'panel', 'data-tag':'Действие'});
   const claimSel = el('select');
-  claimSel.appendChild(el('option',{value:'', text:'Выберите: кто сейчас берёт устройство?'}));
+  claimSel.appendChild(el('option',{value:'', text:'Выберите: кто сейчас за устройством?'}));
   s.p.forEach((pl,i)=>{
     if(!pl.e) claimSel.appendChild(el('option',{value:i, text:pl.n}));
   });
@@ -624,7 +774,7 @@ function render(){
     const chosen = parseInt(claimSel.value);
     if(isNaN(chosen)) return;
     if(chosen !== turnIdx){
-      actionArea.appendChild(el('p',{class:'tiny', html:'Сейчас не твой ход. Передай устройство игроку <b>'+turnName+'</b>.'}));
+      actionArea.appendChild(el('p',{class:'tiny', html:'Сейчас не твой ход. Ход игрока <b>'+turnName+'</b> — просто подожди, экран обновится сам.'}));
       return;
     }
     const stamp = el('div',{class:'stamp', text:'ТВОЁ ДОСЬЕ'});
@@ -641,11 +791,12 @@ function render(){
       } else {
         actionArea.appendChild(el('p',{html:'Раскрыть для всех: <b>'+CATS[catIdx]+'</b> — «'+s.p[chosen].v[catIdx]+'»'}));
       }
-      const btn = el('button',{class:'primary', text: already? 'Продолжить →' : 'Раскрыть и передать дальше'});
+      const btn = el('button',{class:'primary', text: already? 'Продолжить →' : 'Раскрыть для всех'});
       btn.onclick = ()=>{
-        if(!already) s.p[chosen].r = s.p[chosen].r | (1<<catIdx);
-        advanceAfterReveal(s);
-        setStateAndRender(s);
+        const next = JSON.parse(JSON.stringify(s));
+        if(!already) next.p[chosen].r = next.p[chosen].r | (1<<catIdx);
+        advanceAfterReveal(next);
+        pushState(next);
       };
       actionArea.appendChild(btn);
     } else if(s.ph==='vote'){
@@ -656,23 +807,34 @@ function render(){
         if(!pl.e && i!==chosen) voteSel.appendChild(el('option',{value:i, text:pl.n}));
       });
       actionArea.appendChild(voteSel);
-      const btn = el('button',{class:'danger', text:'Отдать голос и передать дальше'});
+      const btn = el('button',{class:'danger', text:'Отдать голос'});
       btn.onclick = ()=>{
         const target = parseInt(voteSel.value);
         if(isNaN(target)){ return; }
-        s.vt[chosen] = target;
-        const eliminated = advanceAfterVote(s);
-        setStateAndRender(s);
+        const next = JSON.parse(JSON.stringify(s));
+        next.vt[chosen] = target;
+        advanceAfterVote(next);
+        pushState(next);
       };
       actionArea.appendChild(btn);
     }
   };
-
-  app.appendChild(copyBtnRow());
 }
 
-window.addEventListener('hashchange', render);
-render();
+/* ---------------- Boot ---------------- */
+
+function boot(){
+  if(!configOk){ renderConfigMissing(); return; }
+  const params = new URLSearchParams(location.search);
+  const room = params.get('room');
+  if(room){
+    subscribeRoom(room.toUpperCase());
+  } else {
+    renderLobby();
+  }
+}
+
+boot();
 </script>
 </body>
 </html>
