@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+<title>БУНКЕР // Протокол выживания</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg-0:#111317;
+    --bg-1:#191d23;
+    --bg-2:#20252c;
+    --panel:#1c2129;
+    --line:#343c46;
+    --amber:#e6b325;
+    --amber-dim:#8a6c1f;
+    --rust:#b5451f;
+    --paper:#eee6d3;
+    --muted:#8992a0;
+    --green:#5c9a6b;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:
+      repeating-linear-gradient(0deg, rgba(255,255,255,0.015) 0px, rgba(255,255,255,0.015) 1px, transparent 1px, transparent 3px),
+      radial-gradient(ellipse at top, var(--bg-1), var(--bg-0) 70%);
+    color:var(--paper);
+    font-family:'IBM Plex Mono', monospace;
+    min-height:100vh;
+    padding:0 0 60px 0;
+  }
+  .hazard{
+    height:8px;
+    width:100%;
+    background:repeating-linear-gradient(135deg, var(--amber), var(--amber) 14px, #111 14px, #111 28px);
+  }
+  header.top{
+    padding:22px 20px 14px;
+    max-width:900px;
+    margin:0 auto;
+    text-align:center;
+  }
+  h1.brand{
+    font-family:'Oswald', sans-serif;
+    font-weight:700;
+    letter-spacing:6px;
+    font-size:clamp(28px,6vw,44px);
+    margin:10px 0 4px;
+    color:var(--paper);
+  }
+  h1.brand span{color:var(--amber);}
+  .subbrand{
+    font-size:12px;
+    letter-spacing:3px;
+    color:var(--muted);
+    text-transform:uppercase;
+  }
+  main{
+    max-width:900px;
+    margin:0 auto;
+    padding:10px 16px 0;
+  }
+  .panel{
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:2px;
+    padding:20px;
+    margin-bottom:18px;
+    position:relative;
+  }
+  .panel::before{
+    content:attr(data-tag);
+    position:absolute;
+    top:-10px;
+    left:16px;
+    background:var(--bg-0);
+    padding:0 8px;
+    font-size:11px;
+    letter-spacing:2px;
+    color:var(--amber);
+    text-transform:uppercase;
+  }
+  .alert-ticker{
+    background:#171a1f;
+    border:1px solid var(--rust);
+    color:#e8a08c;
+    padding:12px 16px;
+    font-size:13px;
+    line-height:1.6;
+    border-radius:2px;
+  }
+  .alert-ticker b{color:var(--amber);}
+  .bunker-info{
+    font-size:13px;
+    color:var(--muted);
+    margin-top:10px;
+    line-height:1.6;
+  }
+  label{
+    display:block;
+    font-size:11px;
+    letter-spacing:1.5px;
+    text-transform:uppercase;
+    color:var(--muted);
+    margin-bottom:6px;
+  }
+  input[type=text]{
+    width:100%;
+    background:var(--bg-0);
+    border:1px solid var(--line);
+    color:var(--paper);
+    padding:11px 12px;
+    font-family:'IBM Plex Mono', monospace;
+    font-size:14px;
+    border-radius:2px;
+    margin-bottom:14px;
+  }
+  input[type=text]:focus{outline:none; border-color:var(--amber);}
+  .grid6{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:0 16px;
+  }
+  @media(max-width:520px){.grid6{grid-template-columns:1fr;}}
+  button{
+    font-family:'Oswald', sans-serif;
+    font-weight:600;
+    letter-spacing:2px;
+    text-transform:uppercase;
+    font-size:14px;
+    padding:13px 20px;
+    border-radius:2px;
+    border:1px solid var(--amber);
+    background:transparent;
+    color:var(--amber);
+    cursor:pointer;
+    transition:background .15s, color .15s;
+  }
+  button:hover{background:var(--amber); color:#171a1f;}
+  button.primary{background:var(--amber); color:#171a1f;}
+  button.primary:hover{background:#f3c545;}
+  button.danger{border-color:var(--rust); color:#e8a08c;}
+  button.danger:hover{background:var(--rust); color:#fff;}
+  button:disabled{opacity:.35; cursor:not-allowed;}
+  button:disabled:hover{background:transparent; color:var(--amber);}
+  .row{display:flex; gap:10px; flex-wrap:wrap; align-items:center;}
+  .turn-banner{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:10px;
+    background:linear-gradient(90deg, rgba(230,179,37,0.13), transparent);
+    border-left:3px solid var(--amber);
+    padding:14px 16px;
+    margin-bottom:18px;
+    font-family:'Oswald', sans-serif;
+    letter-spacing:1px;
+  }
+  .turn-banner .cursor{animation:blink 1s steps(1) infinite;}
+  @keyframes blink{50%{opacity:0;}}
+  @media (prefers-reduced-motion: reduce){.turn-banner .cursor{animation:none;}}
+  .phase-pill{
+    font-size:11px;
+    letter-spacing:1.5px;
+    text-transform:uppercase;
+    color:#171a1f;
+    background:var(--amber);
+    padding:3px 10px;
+    border-radius:20px;
+    white-space:nowrap;
+  }
+  .roster{
+    display:grid;
+    grid-template-columns:repeat(auto-fill, minmax(260px,1fr));
+    gap:14px;
+  }
+  .dossier{
+    background:var(--bg-0);
+    border:1px solid var(--line);
+    border-radius:2px;
+    padding:14px 14px 16px;
+    position:relative;
+    overflow:hidden;
+  }
+  .dossier.out{opacity:.4;}
+  .dossier.out::after{
+    content:"ИСКЛЮЧЁН(А)";
+    position:absolute;
+    top:40%;
+    left:-15%;
+    width:130%;
+    text-align:center;
+    transform:rotate(-8deg);
+    background:var(--rust);
+    color:#fff;
+    font-family:'Oswald',sans-serif;
+    letter-spacing:3px;
+    font-size:12px;
+    padding:4px 0;
+    box-shadow:0 2px 6px rgba(0,0,0,.4);
+  }
+  .dossier.active-turn{border-color:var(--amber); box-shadow:0 0 0 1px var(--amber) inset;}
+  .dossier .pname{
+    font-family:'Oswald', sans-serif;
+    font-size:17px;
+    letter-spacing:1px;
+    margin-bottom:10px;
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+  }
+  .trait-row{
+    display:flex;
+    gap:8px;
+    align-items:baseline;
+    font-size:12.5px;
+    padding:4px 0;
+    border-bottom:1px dashed #2a303a;
+  }
+  .trait-row:last-child{border-bottom:none;}
+  .trait-cat{color:var(--muted); min-width:118px; flex-shrink:0;}
+  .trait-val{color:var(--paper);}
+  .redacted{
+    background:repeating-linear-gradient(135deg,#000,#000 4px,#151515 4px,#151515 8px);
+    color:transparent;
+    border-radius:2px;
+    padding:1px 6px;
+    user-select:none;
+  }
+  .vote-count{
+    font-size:11px;
+    color:var(--amber);
+  }
+  .own-card{
+    border:1px solid var(--amber);
+    background:#1a1710;
+  }
+  .stamp{
+    display:inline-block;
+    border:2px solid var(--rust);
+    color:#e8a08c;
+    font-family:'Oswald',sans-serif;
+    letter-spacing:3px;
+    padding:3px 10px;
+    transform:rotate(-4deg);
+    font-size:11px;
+    margin-bottom:10px;
+    border-radius:3px;
+  }
+  select{
+    width:100%;
+    background:var(--bg-0);
+    border:1px solid var(--line);
+    color:var(--paper);
+    padding:11px 12px;
+    font-family:'IBM Plex Mono', monospace;
+    font-size:14px;
+    border-radius:2px;
+    margin-bottom:14px;
+  }
+  .linkbox{
+    background:var(--bg-0);
+    border:1px solid var(--line);
+    padding:10px 12px;
+    font-size:11.5px;
+    word-break:break-all;
+    color:var(--muted);
+    border-radius:2px;
+    margin:10px 0;
+    max-height:70px;
+    overflow-y:auto;
+  }
+  .copied-msg{color:var(--green); font-size:12px; margin-left:8px;}
+  details{margin-bottom:18px;}
+  summary{
+    cursor:pointer;
+    font-family:'Oswald',sans-serif;
+    letter-spacing:1.5px;
+    text-transform:uppercase;
+    font-size:13px;
+    color:var(--muted);
+  }
+  details[open] summary{color:var(--amber);}
+  .rules-body{font-size:13px; line-height:1.7; color:var(--muted); padding-top:10px;}
+  .rules-body b{color:var(--paper);}
+  .final-list{
+    display:flex;
+    flex-direction:column;
+    gap:10px;
+  }
+  .final-item{
+    background:var(--bg-0);
+    border:1px solid var(--green);
+    padding:12px 14px;
+    border-radius:2px;
+    font-family:'Oswald',sans-serif;
+    letter-spacing:1px;
+    font-size:16px;
+  }
+  .tiny{font-size:11px; color:var(--muted);}
+  footer{
+    text-align:center;
+    color:#4a5260;
+    font-size:11px;
+    padding:30px 20px 10px;
+  }
+</style>
+</head>
+<body>
+<div class="hazard"></div>
+<header class="top">
+  <div class="subbrand">Протокол экстренного распределения мест</div>
+  <h1 class="brand">БУНКЕР<span>::</span>33</h1>
+  <div class="subbrand" id="statusLine">инициализация…</div>
+</header>
+
+<main id="app"></main>
+
+<footer>ходы передаются по ссылке · без сервера · без регистрации</footer>
+
+<script>
+const CATS = ["Профессия","Состояние здоровья","Хобби / навык","Фобия","Личный багаж","Секрет"];
+
+const POOLS = {
+  0:["Хирург","Инженер-электрик","Повар","Программист","Учитель биологии","Военный сапёр","Психолог","Фермер","Сантехник","Актёр","Полицейский","Инженер-строитель","Юрист","Ветеринар","Пожарный","Механик"],
+  1:["Идеальное здоровье","Астма","Диабет 1 типа","Сильная аллергия на пыль","Хроническая бессонница","Слабое зрение (−6)","Периодические мигрени","Лёгкая аритмия","Недавно перенёс(ла) простуду","Здоров(а), но крайне мнителен(льна)"],
+  2:["Игра на гитаре","Охота и разделка дичи","Программирование","Йога и медитация","Кулинария","Рисование","Боевые искусства","Садоводство","Шахматы","Вождение тяжёлой техники","Скалолазание","Рыбалка и вязание узлов"],
+  3:["Клаустрофобия","Никтофобия (боязнь темноты)","Боязнь высоты","Аквафобия (боязнь воды)","Социофобия","Боязнь насекомых","Боязнь крови","Фобий нет"],
+  4:["Аптечка первой помощи","Ящик семян для посадки","Ручной генератор","Гитара","Книги по выживанию","Портативная рация","Ящик консервов","Набор инструментов","Старый фотоальбом","Охотничий нож"],
+  5:["Раньше был(а) осуждён(а) за мелкое правонарушение","Тайно влюблён(а) в одного из присутствующих","Владеет навыками первой помощи, но скрывает это","Панически боится ответственности","На самом деле соврал(а) о своей профессии","Прирождённый лидер, но стесняется","Боится темноты, но никому не признаётся","Хранит секретный рецепт от бабушки"]
+};
+
+const CATASTROPHES = [
+  "Ядерный конфликт уничтожил крупнейшие города. Поверхность заражена на ближайшие годы.",
+  "Неизвестный вирус выкосил 90% населения планеты за три недели.",
+  "Астероид вошёл в атмосферу и вызвал многолетнюю глобальную зиму.",
+  "Суперизвержение вулкана накрыло полушарие слоем пепла.",
+  "Три дня назад начался контакт с враждебной внеземной формой жизни."
+];
+const BUNKERS = [
+  "Бункер рассчитан на 3 человек. Запасов еды и воды хватит на 6 месяцев.",
+  "Бункер рассчитан на 3 человек. Есть система очистки воздуха, но еды в обрез.",
+  "Бункер рассчитан на 3 человек. Автономный генератор, ограниченный запас медикаментов.",
+  "Бункер рассчитан на 3 человек. Тесно, но безопасно минимум на год."
+];
+
+function shuffle(arr){
+  const a=arr.slice();
+  for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}
+  return a;
+}
+function pick(arr){return arr[Math.floor(Math.random()*arr.length)];}
+
+function b64EncodeUnicode(str){
+  return btoa(encodeURIComponent(str).replace(/%([0-9A-F]{2})/g,(m,p1)=>String.fromCharCode('0x'+p1)));
+}
+function b64DecodeUnicode(str){
+  return decodeURIComponent(atob(str).split('').map(c=>'%'+('00'+c.charCodeAt(0).toString(16)).slice(-2)).join(''));
+}
+
+function encodeState(s){ return b64EncodeUnicode(JSON.stringify(s)); }
+function decodeState(h){ return JSON.parse(b64DecodeUnicode(h)); }
+
+function getState(){
+  const h = location.hash.slice(1);
+  if(!h) return null;
+  try{ return decodeState(h); }catch(e){ return null; }
+}
+function setStateAndRender(s){
+  location.hash = encodeState(s);
+  render();
+}
+
+function activeIdx(s){
+  return s.p.map((pl,i)=>i).filter(i=>!s.p[i].e);
+}
+
+function currentTurnPlayer(s){
+  const act = activeIdx(s);
+  return act[s.tp];
+}
+
+function makeGame(names){
+  const traits = CATS.map((_,catIdx)=>shuffle(POOLS[catIdx]).slice(0,6));
+  const players = names.map((n,i)=>({
+    n:n,
+    v:[traits[0][i],traits[1][i],traits[2][i],traits[3][i],traits[4][i],traits[5][i]],
+    r:0,
+    e:false
+  }));
+  return {
+    p:players,
+    c:pick(CATASTROPHES),
+    b:pick(BUNKERS),
+    ph:"reveal",
+    rd:1,
+    tp:0,
+    vt:{}
+  };
+}
+
+function advanceAfterReveal(s){
+  s.tp++;
+  const act = activeIdx(s);
+  if(s.tp >= act.length){
+    s.tp = 0;
+    s.rd++;
+    if(s.rd > 3){
+      s.ph = "vote";
+      s.rd = 1;
+      s.vt = {};
+    }
+  }
+}
+
+function tallyAndEliminate(s){
+  const counts = {};
+  Object.values(s.vt).forEach(t=>{counts[t]=(counts[t]||0)+1;});
+  let maxV=-1, target=null;
+  Object.keys(counts).forEach(k=>{
+    if(counts[k]>maxV){maxV=counts[k]; target=parseInt(k);}
+  });
+  if(target!==null){ s.p[target].e = true; }
+  s.vt = {};
+  s.tp = 0;
+  const act = activeIdx(s);
+  if(act.length <= 3){
+    s.ph = "end";
+  } else {
+    s.rd++;
+  }
+  return target;
+}
+
+function advanceAfterVote(s){
+  s.tp++;
+  const act = activeIdx(s);
+  if(s.tp >= act.length){
+    return tallyAndEliminate(s);
+  }
+  return null;
+}
+
+function el(tag, attrs={}, children=[]){
+  const e = document.createElement(tag);
+  Object.entries(attrs).forEach(([k,v])=>{
+    if(k==="html") e.innerHTML=v;
+    else if(k==="text") e.textContent=v;
+    else e.setAttribute(k,v);
+  });
+  (Array.isArray(children)?children:[children]).forEach(c=>{ if(c) e.appendChild(c); });
+  return e;
+}
+
+function renderSetup(){
+  document.getElementById('statusLine').textContent = 'создание протокола · 6 участников';
+  const app = document.getElementById('app');
+  app.innerHTML = '';
+
+  const panel = el('div',{class:'panel', 'data-tag':'Новая симуляция'});
+  panel.appendChild(el('p',{text:'Впишите имена всех шестерых игроков. После создания вы получите ссылку — отправьте её первому игроку в чате.', html:null}));
+
+  const grid = el('div',{class:'grid6'});
+  const inputs = [];
+  for(let i=0;i<6;i++){
+    const wrap = el('div');
+    wrap.appendChild(el('label',{text:'Игрок '+(i+1)}));
+    const inp = el('input',{type:'text', placeholder:'Имя', value:''});
+    inp.value = '';
+    inp.setAttribute('maxlength','16');
+    inputs.push(inp);
+    wrap.appendChild(inp);
+    grid.appendChild(wrap);
+  }
+  panel.appendChild(grid);
+
+  const btn = el('button',{class:'primary', text:'Создать игру и получить ссылку'});
+  btn.onclick = ()=>{
+    const names = inputs.map((i,idx)=>i.value.trim() || ('Игрок '+(idx+1)));
+    const s = makeGame(names);
+    setStateAndRender(s);
+  };
+  panel.appendChild(el('div',{class:'row', style:'margin-top:6px'},[btn]));
+  app.appendChild(panel);
+
+  const rules = el('details');
+  const sum = el('summary',{text:'Правила'});
+  rules.appendChild(sum);
+  rules.appendChild(el('div',{class:'rules-body', html:`
+    Случилась катастрофа. У вас есть один бункер на троих и шесть претендентов на место.<br><br>
+    <b>Раскрытие (3 раунда).</b> По очереди каждый игрок открывает одну свою характеристику для всех — сначала профессию, затем здоровье, затем хобби. Фобия, багаж и секрет остаются в тени до конца.<br><br>
+    <b>Голосование (до 3 раундов).</b> Обсудите вслух или в чате, кто менее полезен для выживания группы, затем каждый по очереди голосует. Игрок с наибольшим числом голосов выбывает.<br><br>
+    <b>Финал.</b> Игра заканчивается, когда в бункере остаётся 3 человека.<br><br>
+    <span class="tiny">Важно: состояние игры хранится прямо в ссылке. Все данные технически видны в самой ссылке при желании её разобрать — это честная игра на доверии между друзьями, а не защищённая система.</span>
+  `}));
+  app.appendChild(rules);
+}
+
+function traitRow(catIdx, value, revealed){
+  const row = el('div',{class:'trait-row'});
+  row.appendChild(el('span',{class:'trait-cat', text:CATS[catIdx]}));
+  if(revealed){
+    row.appendChild(el('span',{class:'trait-val', text:value}));
+  } else {
+    row.appendChild(el('span',{class:'redacted', text:value}));
+  }
+  return row;
+}
+
+function renderRoster(s, opts={}){
+  const roster = el('div',{class:'roster'});
+  s.p.forEach((pl,i)=>{
+    const isTurn = !pl.e && i===currentTurnPlayer(s) && opts.highlightTurn;
+    const isOwn = opts.ownIdx===i;
+    const card = el('div',{class:'dossier'+(pl.e?' out':'')+(isTurn?' active-turn':'')+(isOwn?' own-card':'')});
+    const nameRow = el('div',{class:'pname'});
+    nameRow.appendChild(el('span',{text:pl.n}));
+    if(s.ph==='vote' && !pl.e){
+      const vc = Object.values(s.vt).filter(t=>t===i).length;
+      if(vc>0) nameRow.appendChild(el('span',{class:'vote-count', text:vc+' ГОЛОС(А)'}));
+    }
+    card.appendChild(nameRow);
+    for(let c=0;c<6;c++){
+      const revealed = isOwn ? true : !!((pl.r>>c)&1);
+      card.appendChild(traitRow(c, pl.v[c], revealed));
+    }
+    roster.appendChild(card);
+  });
+  return roster;
+}
+
+function shareLink(){
+  return location.href;
+}
+
+function copyBtnRow(){
+  const wrap = el('div');
+  wrap.appendChild(el('p',{class:'tiny', text:'Скопируйте ссылку ниже и отправьте следующему игроку по очереди:'}));
+  const box = el('div',{class:'linkbox', text: shareLink()});
+  wrap.appendChild(box);
+  const row = el('div',{class:'row'});
+  const btn = el('button',{class:'primary', text:'Скопировать ссылку'});
+  const msg = el('span',{class:'copied-msg', text:''});
+  btn.onclick = async ()=>{
+    try{
+      await navigator.clipboard.writeText(shareLink());
+      msg.textContent = '✓ скопировано';
+    }catch(e){
+      msg.textContent = 'скопируйте вручную выше';
+    }
+  };
+  row.appendChild(btn); row.appendChild(msg);
+  wrap.appendChild(row);
+  return wrap;
+}
+
+function render(){
+  const s = getState();
+  if(!s){ renderSetup(); return; }
+
+  const app = document.getElementById('app');
+  app.innerHTML = '';
+
+  const alertPanel = el('div',{class:'panel', 'data-tag':'Сводка ситуации'});
+  alertPanel.appendChild(el('div',{class:'alert-ticker', html:'<b>ТРЕВОГА:</b> '+s.c}));
+  alertPanel.appendChild(el('div',{class:'bunker-info', text:s.b}));
+  app.appendChild(alertPanel);
+
+  if(s.ph==='end'){
+    document.getElementById('statusLine').textContent = 'симуляция завершена';
+    const panel = el('div',{class:'panel', 'data-tag':'Итог'});
+    panel.appendChild(el('h3',{text:'Двери бункера закрыты.', style:'font-family:Oswald,sans-serif; letter-spacing:1px;'}));
+    const list = el('div',{class:'final-list'});
+    s.p.forEach((pl,i)=>{ if(!pl.e) list.appendChild(el('div',{class:'final-item', text:'✓ '+pl.n})); });
+    panel.appendChild(list);
+    app.appendChild(panel);
+
+    const dossierPanel = el('div',{class:'panel','data-tag':'Полное досье'});
+    const full = document.createElement('div');
+    full.className='roster';
+    s.p.forEach(pl=>{
+      const card = el('div',{class:'dossier'+(pl.e?' out':'')});
+      card.appendChild(el('div',{class:'pname', text:pl.n}));
+      for(let c=0;c<6;c++) card.appendChild(traitRow(c, pl.v[c], true));
+      full.appendChild(card);
+    });
+    dossierPanel.appendChild(full);
+    app.appendChild(dossierPanel);
+    return;
+  }
+
+  const act = activeIdx(s);
+  const turnIdx = currentTurnPlayer(s);
+  const turnName = s.p[turnIdx].n;
+
+  document.getElementById('statusLine').textContent =
+    (s.ph==='reveal' ? 'фаза раскрытия · раунд '+s.rd+'/3' : 'фаза голосования · раунд '+s.rd);
+
+  const banner = el('div',{class:'turn-banner'});
+  banner.appendChild(el('div',{html:'<span class="cursor">▮</span> Ход игрока: <b>'+turnName+'</b>'}));
+  banner.appendChild(el('div',{class:'phase-pill', text: s.ph==='reveal' ? 'РАСКРЫТИЕ '+s.rd+'/3' : 'ГОЛОСОВАНИЕ '+s.rd}));
+  app.appendChild(banner);
+
+  const boardPanel = el('div',{class:'panel', 'data-tag':'Личные дела претендентов'});
+  boardPanel.appendChild(renderRoster(s, {highlightTurn:true, ownIdx:-1}));
+  app.appendChild(boardPanel);
+
+  const actionPanel = el('div',{class:'panel', 'data-tag':'Действие'});
+  const claimSel = el('select');
+  claimSel.appendChild(el('option',{value:'', text:'Выберите: кто сейчас берёт устройство?'}));
+  s.p.forEach((pl,i)=>{
+    if(!pl.e) claimSel.appendChild(el('option',{value:i, text:pl.n}));
+  });
+  actionPanel.appendChild(el('label',{text:'Подтвердите личность'}));
+  actionPanel.appendChild(claimSel);
+  const actionArea = el('div',{id:'actionArea'});
+  actionPanel.appendChild(actionArea);
+  app.appendChild(actionPanel);
+
+  claimSel.onchange = ()=>{
+    actionArea.innerHTML = '';
+    const chosen = parseInt(claimSel.value);
+    if(isNaN(chosen)) return;
+    if(chosen !== turnIdx){
+      actionArea.appendChild(el('p',{class:'tiny', html:'Сейчас не твой ход. Передай устройство игроку <b>'+turnName+'</b>.'}));
+      return;
+    }
+    const stamp = el('div',{class:'stamp', text:'ТВОЁ ДОСЬЕ'});
+    actionArea.appendChild(stamp);
+    const own = el('div',{class:'panel', style:'background:#171a1f; padding:12px 14px; margin-bottom:14px;'});
+    for(let c=0;c<6;c++) own.appendChild(traitRow(c, s.p[chosen].v[c], true));
+    actionArea.appendChild(own);
+
+    if(s.ph==='reveal'){
+      const catIdx = s.rd - 1;
+      const already = !!((s.p[chosen].r>>catIdx)&1);
+      if(already){
+        actionArea.appendChild(el('p',{text:'Эта характеристика уже раскрыта. Передайте ход дальше.'}));
+      } else {
+        actionArea.appendChild(el('p',{html:'Раскрыть для всех: <b>'+CATS[catIdx]+'</b> — «'+s.p[chosen].v[catIdx]+'»'}));
+      }
+      const btn = el('button',{class:'primary', text: already? 'Продолжить →' : 'Раскрыть и передать дальше'});
+      btn.onclick = ()=>{
+        if(!already) s.p[chosen].r = s.p[chosen].r | (1<<catIdx);
+        advanceAfterReveal(s);
+        setStateAndRender(s);
+      };
+      actionArea.appendChild(btn);
+    } else if(s.ph==='vote'){
+      actionArea.appendChild(el('label',{text:'За кого голосуешь на исключение?'}));
+      const voteSel = el('select');
+      voteSel.appendChild(el('option',{value:'', text:'Выберите игрока'}));
+      s.p.forEach((pl,i)=>{
+        if(!pl.e && i!==chosen) voteSel.appendChild(el('option',{value:i, text:pl.n}));
+      });
+      actionArea.appendChild(voteSel);
+      const btn = el('button',{class:'danger', text:'Отдать голос и передать дальше'});
+      btn.onclick = ()=>{
+        const target = parseInt(voteSel.value);
+        if(isNaN(target)){ return; }
+        s.vt[chosen] = target;
+        const eliminated = advanceAfterVote(s);
+        setStateAndRender(s);
+      };
+      actionArea.appendChild(btn);
+    }
+  };
+
+  app.appendChild(copyBtnRow());
+}
+
+window.addEventListener('hashchange', render);
+render();
+</script>
+</body>
+</html>
