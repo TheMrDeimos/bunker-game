@@ -442,7 +442,7 @@ function makeGame(names){
     ph:"reveal",
     rd:1,
     tp:0,
-    vt:[null,null,null,null,null,null]
+    vt:[-1,-1,-1,-1,-1,-1]
   };
 }
 
@@ -455,20 +455,20 @@ function advanceAfterReveal(s){
     if(s.rd > 3){
       s.ph = "vote";
       s.rd = 1;
-      s.vt = [null,null,null,null,null,null];
+      s.vt = [-1,-1,-1,-1,-1,-1];
     }
   }
 }
 
 function tallyAndEliminate(s){
   const counts = {};
-  s.vt.forEach(t=>{ if(t!==null && t!==undefined) counts[t]=(counts[t]||0)+1; });
-  let maxV=-1, target=null;
+  s.vt.forEach(t=>{ if(t!==-1 && t!==undefined) counts[t]=(counts[t]||0)+1; });
+  let maxV=-1, target=-1;
   Object.keys(counts).forEach(k=>{
     if(counts[k]>maxV){maxV=counts[k]; target=parseInt(k);}
   });
-  if(target!==null){ s.p[target].e = true; }
-  s.vt = [null,null,null,null,null,null];
+  if(target!==-1){ s.p[target].e = true; }
+  s.vt = [-1,-1,-1,-1,-1,-1];
   s.tp = 0;
   const act = activeIdx(s);
   if(act.length <= 3){
@@ -485,20 +485,20 @@ function advanceAfterVote(s){
   if(s.tp >= act.length){
     return tallyAndEliminate(s);
   }
-  return null;
+  return -1;
 }
 
 /* ---------------- Firebase wiring ---------------- */
 
-let db = null;
+let db = -1;
 const configOk = firebaseConfig.apiKey && firebaseConfig.apiKey.indexOf("ВСТАВЬ") === -1;
 if(configOk){
   firebase.initializeApp(firebaseConfig);
   db = firebase.database();
 }
 
-let currentRoom = null;
-let currentOffFn = null;
+let currentRoom = -1;
+let currentOffFn = -1;
 
 function genRoomCode(){
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -612,7 +612,7 @@ function renderRoomMissing(code){
   const panel = el('div',{class:'panel', 'data-tag':'Ошибка'});
   panel.appendChild(el('p',{html:'Комната <b>'+code+'</b> не найдена или ещё не создана.'}));
   const btn = el('button',{class:'primary', text:'Вернуться на главный экран'});
-  btn.onclick = ()=>{ history.replaceState(null,'', location.pathname); renderLobby(); };
+  btn.onclick = ()=>{ history.replaceState(-1,'', location.pathname); renderLobby(); };
   panel.appendChild(btn);
   app.appendChild(panel);
 }
@@ -657,7 +657,7 @@ function renderLobby(){
       const s = makeGame(names);
       const code = genRoomCode();
       db.ref('rooms/'+code).set(s).then(()=>{
-        history.replaceState(null,'', location.pathname + '?room=' + code);
+        history.replaceState(-1,'', location.pathname + '?room=' + code);
         subscribeRoom(code);
       }).catch(e=>{ err.textContent = 'Ошибка записи в базу: '+e.message; });
     };
@@ -679,7 +679,7 @@ function renderLobby(){
       if(code.length!==4){ err.textContent='Код должен состоять из 4 символов.'; return; }
       db.ref('rooms/'+code).get().then(snap=>{
         if(snap.exists()){
-          history.replaceState(null,'', location.pathname + '?room=' + code);
+          history.replaceState(-1,'', location.pathname + '?room=' + code);
           subscribeRoom(code);
         } else {
           err.textContent = 'Комната с таким кодом не найдена.';
