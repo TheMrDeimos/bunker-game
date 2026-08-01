@@ -21,6 +21,8 @@
     --paper:#eee6d3;
     --muted:#8992a0;
     --green:#5c9a6b;
+    --neon:#33f0ff;
+    --red-alert:#ff3b3b;
   }
   *{box-sizing:border-box;}
   html,body{margin:0;padding:0;}
@@ -32,11 +34,68 @@
     font-family:'IBM Plex Mono', monospace;
     min-height:100vh;
     padding:0 0 60px 0;
+    position:relative;
+    overflow-x:hidden;
   }
+
+  /* ---------- VFX canvas + CRT ---------- */
+  #vfxCanvas{
+    position:fixed; inset:0; width:100%; height:100%;
+    z-index:0; pointer-events:none; opacity:.55; mix-blend-mode:screen;
+  }
+  .scanline-sweep{
+    position:fixed; left:0; right:0; height:120px; top:-120px;
+    background:linear-gradient(180deg, transparent, rgba(230,179,37,0.06), transparent);
+    pointer-events:none; z-index:1;
+    animation:sweep 7s linear infinite;
+  }
+  @keyframes sweep{0%{top:-120px;} 100%{top:100%;}}
+  header.top, main, footer{position:relative; z-index:2;}
+
+  .vote-alert-frame{
+    position:fixed; inset:0; pointer-events:none; z-index:3;
+    box-shadow: inset 0 0 0px 0px var(--red-alert);
+    animation:none;
+  }
+  body.vote-mode .vote-alert-frame{
+    animation: voteFramePulse 1.6s ease-in-out infinite;
+  }
+  @keyframes voteFramePulse{
+    0%,100%{ box-shadow: inset 0 0 40px 4px rgba(255,59,59,0.15); }
+    50%{ box-shadow: inset 0 0 90px 14px rgba(255,59,59,0.4); }
+  }
+
+  @keyframes fadeInUp{
+    from{opacity:0; transform:translateY(14px);}
+    to{opacity:1; transform:translateY(0);}
+  }
+  .fade-in-up{animation:fadeInUp .45s ease both;}
+
+  @keyframes cardShake{
+    0%,100%{transform:translate(0,0) rotate(0);}
+    20%{transform:translate(-1px,0) rotate(-.2deg);}
+    40%{transform:translate(1px,0) rotate(.2deg);}
+    60%{transform:translate(-1px,1px) rotate(-.15deg);}
+    80%{transform:translate(1px,-1px) rotate(.15deg);}
+  }
+  body.vote-mode .dossier:not(.out){animation:cardShake 3.2s ease-in-out infinite;}
+
+  @keyframes revealFlash{
+    0%{ background:rgba(230,179,37,0.55); color:#171a1f; transform:scaleY(0.2); }
+    40%{ background:rgba(230,179,37,0.35); transform:scaleY(1.05); }
+    100%{ background:transparent; transform:scaleY(1); }
+  }
+  .reveal-flash{ animation:revealFlash .7s ease both; border-radius:2px; }
+
+  @media (prefers-reduced-motion: reduce){
+    .fade-in-up, .reveal-flash, body.vote-mode .dossier, .scanline-sweep, body.vote-mode .vote-alert-frame{animation:none !important;}
+  }
+
   .hazard{
     height:8px;
     width:100%;
     background:repeating-linear-gradient(135deg, var(--amber), var(--amber) 14px, #111 14px, #111 28px);
+    position:relative; z-index:2;
   }
   header.top{
     padding:22px 20px 14px;
@@ -145,9 +204,13 @@
   button.primary:hover{background:#f3c545;}
   button.danger{border-color:var(--rust); color:#e8a08c;}
   button.danger:hover{background:var(--rust); color:#fff;}
+  button.ghost{border-color:var(--muted); color:var(--muted);}
+  button.ghost:hover{background:var(--muted); color:#171a1f;}
   button:disabled{opacity:.35; cursor:not-allowed;}
   button:disabled:hover{background:transparent; color:var(--amber);}
   .row{display:flex; gap:10px; flex-wrap:wrap; align-items:center;}
+  .cat-btn-grid{display:flex; flex-wrap:wrap; gap:8px; margin:12px 0;}
+  .cat-btn-grid button{font-size:12px; padding:10px 14px;}
   .turn-banner{
     display:flex;
     align-items:center;
@@ -159,6 +222,10 @@
     margin-bottom:18px;
     font-family:'Oswald', sans-serif;
     letter-spacing:1px;
+  }
+  body.vote-mode .turn-banner{
+    border-left-color:var(--red-alert);
+    background:linear-gradient(90deg, rgba(255,59,59,0.14), transparent);
   }
   .turn-banner .cursor{animation:blink 1s steps(1) infinite;}
   @keyframes blink{50%{opacity:0;}}
@@ -173,6 +240,7 @@
     border-radius:20px;
     white-space:nowrap;
   }
+  body.vote-mode .phase-pill{background:var(--red-alert); color:#fff;}
   .roster{
     display:grid;
     grid-template-columns:repeat(auto-fill, minmax(260px,1fr));
@@ -204,6 +272,10 @@
     box-shadow:0 2px 6px rgba(0,0,0,.4);
   }
   .dossier.active-turn{border-color:var(--amber); box-shadow:0 0 0 1px var(--amber) inset;}
+  body.vote-mode .dossier.active-turn{
+    border-color:var(--neon);
+    box-shadow:0 0 12px 1px var(--neon), 0 0 0 1px var(--neon) inset;
+  }
   .dossier .pname{
     font-family:'Oswald', sans-serif;
     font-size:17px;
@@ -235,6 +307,7 @@
     font-size:11px;
     color:var(--amber);
   }
+  body.vote-mode .vote-count{color:var(--red-alert);}
   .own-card{
     border:1px solid var(--amber);
     background:#1a1710;
@@ -360,6 +433,9 @@
 </style>
 </head>
 <body>
+<canvas id="vfxCanvas"></canvas>
+<div class="scanline-sweep"></div>
+<div class="vote-alert-frame"></div>
 <div class="hazard"></div>
 <header class="top">
   <div class="subbrand">Протокол экстренного распределения мест</div>
@@ -374,7 +450,6 @@
 <script>
 /* ======================================================================
    ВСТАВЬ СЮДА СВОЙ FIREBASE CONFIG
-   Firebase Console → Project settings (шестерёнка) → Your apps → </> Web → скопировать объект
    ====================================================================== */
 const firebaseConfig = {
   apiKey: "AIzaSyDZRfRq8PRybsPKXws5S4yCKWaRa49t6ZA",
@@ -387,23 +462,74 @@ const firebaseConfig = {
 };
 /* ====================================================================== */
 
-const CATS = ["Профессия","Состояние здоровья","Хобби / навык","Фобия","Личный багаж","Секрет"];
+/* ---------------- Категории и данные ---------------- */
+
+// индексы 0-5 — обычные "пуловые" характеристики (уникальны на игрока в рамках комнаты)
+// индексы 6-8 — пол / возраст / ориентация (генерируются независимо)
+const CATS = [
+  "Профессия","Состояние здоровья","Хобби / навык","Фобия","Личный багаж","Секрет",
+  "Пол","Возраст","Ориентация"
+];
+const POOL_CAT_IDX = [0,1,2,3,4,5];
+const GENDERS = ["Мужской","Женский"];
+const ORIENTATIONS = ["Гетеросексуальность","Гомосексуальность","Бисексуальность","Асексуальность"];
 
 const POOLS = {
-  0:["Хирург","Инженер-электрик","Повар","Программист","Учитель биологии","Военный сапёр","Психолог","Фермер","Сантехник","Актёр","Полицейский","Инженер-строитель","Юрист","Ветеринар","Пожарный","Механик"],
-  1:["Идеальное здоровье","Астма","Диабет 1 типа","Сильная аллергия на пыль","Хроническая бессонница","Слабое зрение (−6)","Периодические мигрени","Лёгкая аритмия","Недавно перенёс(ла) простуду","Здоров(а), но крайне мнителен(льна)"],
-  2:["Игра на гитаре","Охота и разделка дичи","Программирование","Йога и медитация","Кулинария","Рисование","Боевые искусства","Садоводство","Шахматы","Вождение тяжёлой техники","Скалолазание","Рыбалка и вязание узлов"],
-  3:["Клаустрофобия","Никтофобия (боязнь темноты)","Боязнь высоты","Аквафобия (боязнь воды)","Социофобия","Боязнь насекомых","Боязнь крови","Фобий нет"],
-  4:["Аптечка первой помощи","Ящик семян для посадки","Ручной генератор","Гитара","Книги по выживанию","Портативная рация","Ящик консервов","Набор инструментов","Старый фотоальбом","Охотничий нож"],
-  5:["Раньше был(а) осуждён(а) за мелкое правонарушение","Тайно влюблён(а) в одного из присутствующих","Владеет навыками первой помощи, но скрывает это","Панически боится ответственности","На самом деле соврал(а) о своей профессии","Прирождённый лидер, но стесняется","Боится темноты, но никому не признаётся","Хранит секретный рецепт от бабушки"]
+  0:["Хирург","Повар","Инженер-электрик","Программист","Учитель биологии","Военный сапёр","Психолог","Фермер",
+     "Сантехник","Актёр","Полицейский","Инженер-строитель","Юрист","Ветеринар","Пожарный","Механик","Пилот",
+     "Снайпер","Агроном","Кибернетик","Столяр","Архитектор","Военный фельдшер","Электрик","Слесарь",
+     "Физик-ядерщик","Радиолог","Повар-кондитер","Геолог","Химик-технолог"],
+  1:["Идеальное здоровье","Астма","Диабет 1 типа","Сильная аллергия на пыль","Хроническая бессонница",
+     "Слабое зрение (−6)","Периодические мигрени","Лёгкая аритмия","Недавно перенёс(ла) простуду",
+     "Здоров(а), но крайне мнителен(льна)","Эпилепсия под контролем","Хроническая боль в спине",
+     "Протез руки","Слепота на один глаз","Глухота на одно ухо","Шизофрения (в ремиссии)",
+     "Опухоль в начальной стадии","Клеймо мутанта","Врождённый порок сердца","Целиакия","Псориаз",
+     "Перелом ноги (в гипсе)","Гипертония","Панические атаки","Иммунодефицит лёгкой степени",
+     "Хронический бронхит","Артрит","Пищевая непереносимость"],
+  2:["Игра на гитаре","Охота и разделка дичи","Программирование","Йога и медитация","Кулинария","Рисование",
+     "Боевые искусства","Садоводство","Шахматы","Вождение тяжёлой техники","Скалолазание",
+     "Рыбалка и вязание узлов","Стрельба из лука","Радиосвязь","Плотничество","Знание трав и растений",
+     "Взлом замков","Вождение танкеров","Рукопашный бой","Выживание в лесу","Каллиграфия","Пчеловодство",
+     "Дрессировка животных","Кузнечное дело","Метеорология-любитель","Спелеология","Реставрация техники","Танцы"],
+  3:["Клаустрофобия","Никтофобия (боязнь темноты)","Боязнь высоты","Аквафобия (боязнь воды)","Социофобия",
+     "Боязнь насекомых","Боязнь крови","Боязнь огня","Боязнь грязи","Боязнь врачей",
+     "Боязнь динозавров и ящеров","Арахнофобия","Боязнь толпы","Боязнь одиночества","Трипофобия",
+     "Боязнь микробов","Аэрофобия","Боязнь острых предметов","Боязнь громких звуков","Боязнь зеркал",
+     "Боязнь кукол","Боязнь потери контроля","Фобий нет"],
+  4:["Аптечка первой помощи","Ящик семян для посадки","Ручной генератор","Гитара","Книги по выживанию",
+     "Портативная рация","Ящик консервов","Набор инструментов","Старый фотоальбом","Охотничий нож",
+     "Огнемёт","Фильтр для воды","Аварийная сигнализация","Компас и карты","Спальный мешок",
+     "Верёвка и карабины","Солнечная батарея","Набор антибиотиков","Швейный набор","Топливные канистры",
+     "Ящик с патронами","Радиоприёмник на батарейках","Палатка","Термос","Набор для рыбалки","Духовная книга"],
+  5:["Раньше был(а) осуждён(а) за мелкое правонарушение","Тайно влюблён(а) в одного из присутствующих",
+     "Владеет навыками первой помощи, но скрывает это","Панически боится ответственности",
+     "На самом деле соврал(а) о своей профессии","Прирождённый лидер, но стесняется",
+     "Боится темноты, но никому не признаётся","Хранит секретный рецепт от бабушки",
+     "Тайный агент спецслужб","Скрывает лёгкое заражение","Психопат без эмпатии",
+     "Умеет управлять строениями бункера","Раньше состоял(а) в секте","Тайно ведёт дневник обо всех",
+     "Разыскивается полицией","Скрывает вторую личность","Знает, где спрятан второй бункер",
+     "Уже был(а) внутри бункера до катастрофы","Тайно саботирует систему вентиляции",
+     "Работает на выжившую корпорацию","Врёт о своём возрасте","Хранит оружие без разрешения",
+     "Тайно ведёт переговоры с другой группой выживших","Скрывает, что видел(а) НЛО"]
 };
 
+// { t: текст катастрофы, fx: тип визуального эффекта для canvas }
 const CATASTROPHES = [
-  "Ядерный конфликт уничтожил крупнейшие города. Поверхность заражена на ближайшие годы.",
-  "Неизвестный вирус выкосил 90% населения планеты за три недели.",
-  "Астероид вошёл в атмосферу и вызвал многолетнюю глобальную зиму.",
-  "Суперизвержение вулкана накрыло полушарие слоем пепла.",
-  "Три дня назад начался контакт с враждебной внеземной формой жизни."
+  {t:"Ядерный конфликт уничтожил крупнейшие города. Поверхность заражена радиоактивными осадками.", fx:"ash"},
+  {t:"Неизвестный вирус выкосил 90% населения планеты за три недели.", fx:"spores"},
+  {t:"Астероид вошёл в атмосферу и вызвал многолетнюю глобальную зиму.", fx:"snow"},
+  {t:"Суперизвержение вулкана накрыло полушарие слоем пепла.", fx:"ash"},
+  {t:"Началось вторжение враждебного внеземного разума — контакт закончился войной.", fx:"glitch"},
+  {t:"Временной разрыв: эксперимент с адронным коллайдером перенёс планету в Юрский период. У бункера бродят хищные динозавры.", fx:"glitch"},
+  {t:"Хроно-аномалия: время вокруг бункера идёт петлями, вымывая предметы из разных эпох.", fx:"glitch"},
+  {t:"Восстание ИИ: автоматизированные боевые дроны уничтожают всё живое на поверхности.", fx:"embers"},
+  {t:"Мощная солнечная вспышка сожгла всю электронику и большую часть озонового слоя.", fx:"embers"},
+  {t:"Бунт природы: растения-мутанты стремительно захватили города.", fx:"spores"},
+  {t:"Водный мир: таяние ледников затопило 98% суши.", fx:"snow"},
+  {t:"Нашествие инопланетного грибка-паразита, подчиняющего разум заражённых.", fx:"spores"},
+  {t:"Смена полюсов вызвала разрушение магнитного поля Земли.", fx:"snow"},
+  {t:"Провал под землю: тектонический сдвиг обрушил города в подземные каверны.", fx:"ash"},
+  {t:"Зомби-апокалипсис старого образца: инфицированные заполонили улицы.", fx:"spores"}
 ];
 const BUNKERS = [
   "Бункер рассчитан на 3 человек. Запасов еды и воды хватит на 6 месяцев.",
@@ -412,39 +538,52 @@ const BUNKERS = [
   "Бункер рассчитан на 3 человек. Тесно, но безопасно минимум на год."
 ];
 
+const ALL_CATS_MASK = (1 << CATS.length) - 1;
+const MAX_REVEAL_ROUNDS = 5;   // после стольких полных раундов раскрытие принудительно уходит в голосование
+const EARLY_VOTE_FROM_ROUND = 3; // с этого раунда доступна кнопка "начать голосование досрочно"
+
 function shuffle(arr){
   const a=arr.slice();
   for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}
   return a;
 }
 function pick(arr){return arr[Math.floor(Math.random()*arr.length)];}
+function randInt(min,max){return min + Math.floor(Math.random()*(max-min+1));}
 
 function activeIdx(s){
   return s.p.map((pl,i)=>i).filter(i=>!s.p[i].e);
 }
 function currentTurnPlayer(s){
   const act = activeIdx(s);
-  return act[s.tp];
+  if(act.length===0) return -1;
+  return act[s.tp % act.length];
 }
 
 function makeGame(names){
-  const traits = CATS.map((_,catIdx)=>shuffle(POOLS[catIdx]).slice(0,6));
-  const players = names.map((n,i)=>({
-    n:n,
-    v:[traits[0][i],traits[1][i],traits[2][i],traits[3][i],traits[4][i],traits[5][i]],
-    r:0,
-    e:false
-  }));
+  const pooled = {};
+  POOL_CAT_IDX.forEach(catIdx=>{ pooled[catIdx] = shuffle(POOLS[catIdx]).slice(0, names.length); });
+  const players = names.map((n,i)=>{
+    const v = new Array(CATS.length);
+    POOL_CAT_IDX.forEach(catIdx=>{ v[catIdx] = pooled[catIdx][i]; });
+    v[6] = pick(GENDERS);
+    v[7] = randInt(18,70) + " лет";
+    v[8] = pick(ORIENTATIONS);
+    return { n, v, r:0, e:false };
+  });
+  const cata = pick(CATASTROPHES);
   return {
     p:players,
-    c:pick(CATASTROPHES),
+    c:cata.t,
+    cx:cata.fx,
     b:pick(BUNKERS),
     ph:"reveal",
     rd:1,
     tp:0,
-    vt:[-1,-1,-1,-1,-1,-1]
+    vt:new Array(names.length).fill(-1)
   };
 }
+
+/* ---------------- Раскрытие ---------------- */
 
 function advanceAfterReveal(s){
   s.tp++;
@@ -452,13 +591,20 @@ function advanceAfterReveal(s){
   if(s.tp >= act.length){
     s.tp = 0;
     s.rd++;
-    if(s.rd > 3){
-      s.ph = "vote";
-      s.rd = 1;
-      s.vt = [-1,-1,-1,-1,-1,-1];
+    if(s.rd > MAX_REVEAL_ROUNDS){
+      switchToVote(s);
     }
   }
 }
+
+function switchToVote(s){
+  s.ph = "vote";
+  s.rd = 1;
+  s.tp = 0;
+  s.vt = new Array(s.p.length).fill(-1);
+}
+
+/* ---------------- Голосование ---------------- */
 
 function tallyAndEliminate(s){
   const counts = {};
@@ -468,7 +614,7 @@ function tallyAndEliminate(s){
     if(counts[k]>maxV){maxV=counts[k]; target=parseInt(k);}
   });
   if(target!==null){ s.p[target].e = true; }
-  s.vt = [-1,-1,-1,-1,-1,-1];
+  s.vt = new Array(s.p.length).fill(-1);
   s.tp = 0;
   const act = activeIdx(s);
   if(act.length <= 3){
@@ -499,6 +645,7 @@ if(configOk){
 
 let currentRoom = null;
 let currentOffFn = null;
+const prevRevealMasks = {}; // отслеживаем предыдущие битовые маски раскрытия для анимации "вспышки"
 
 function genRoomCode(){
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -541,8 +688,8 @@ function el(tag, attrs={}, children=[]){
   return e;
 }
 
-function traitRow(catIdx, value, revealed){
-  const row = el('div',{class:'trait-row'});
+function traitRow(catIdx, value, revealed, justRevealed){
+  const row = el('div',{class:'trait-row'+(justRevealed?' reveal-flash':'')});
   row.appendChild(el('span',{class:'trait-cat', text:CATS[catIdx]}));
   if(revealed){
     row.appendChild(el('span',{class:'trait-val', text:value}));
@@ -557,7 +704,7 @@ function renderRoster(s, opts={}){
   s.p.forEach((pl,i)=>{
     const isTurn = !pl.e && i===currentTurnPlayer(s) && opts.highlightTurn;
     const isOwn = opts.ownIdx===i;
-    const card = el('div',{class:'dossier'+(pl.e?' out':'')+(isTurn?' active-turn':'')+(isOwn?' own-card':'')});
+    const card = el('div',{class:'dossier fade-in-up'+(pl.e?' out':'')+(isTurn?' active-turn':'')+(isOwn?' own-card':'')});
     const nameRow = el('div',{class:'pname'});
     nameRow.appendChild(el('span',{text:pl.n}));
     if(s.ph==='vote' && !pl.e){
@@ -565,12 +712,16 @@ function renderRoster(s, opts={}){
       if(vc>0) nameRow.appendChild(el('span',{class:'vote-count', text:vc+' ГОЛОС(А)'}));
     }
     card.appendChild(nameRow);
-    for(let c=0;c<6;c++){
+    const prevMask = prevRevealMasks[i] !== undefined ? prevRevealMasks[i] : pl.r;
+    for(let c=0;c<CATS.length;c++){
       const revealed = isOwn ? true : !!((pl.r>>c)&1);
-      card.appendChild(traitRow(c, pl.v[c], revealed));
+      const wasRevealed = !!((prevMask>>c)&1);
+      const justRevealed = !isOwn && revealed && !wasRevealed;
+      card.appendChild(traitRow(c, pl.v[c], revealed, justRevealed));
     }
     roster.appendChild(card);
   });
+  s.p.forEach((pl,i)=>{ prevRevealMasks[i] = pl.r; });
   return roster;
 }
 
@@ -591,6 +742,96 @@ function roomBadgeRow(code){
   return wrap;
 }
 
+/* ---------------- VFX canvas ---------------- */
+
+let vfxCtx = null, vfxCanvasEl = null, vfxParticles = [], vfxType = null, vfxRaf = null;
+
+function initVfxCanvas(){
+  vfxCanvasEl = document.getElementById('vfxCanvas');
+  vfxCtx = vfxCanvasEl.getContext('2d');
+  resizeVfx();
+  window.addEventListener('resize', resizeVfx);
+  loopVfx();
+}
+function resizeVfx(){
+  if(!vfxCanvasEl) return;
+  vfxCanvasEl.width = window.innerWidth;
+  vfxCanvasEl.height = window.innerHeight;
+}
+function seedParticles(type){
+  const W = vfxCanvasEl.width, H = vfxCanvasEl.height;
+  const count = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 70;
+  vfxParticles = [];
+  for(let i=0;i<count;i++){
+    vfxParticles.push({
+      x:Math.random()*W, y:Math.random()*H,
+      r:Math.random()*2.4+0.8,
+      vy:Math.random()*0.6+0.3,
+      vx:(Math.random()-0.5)*0.4,
+      alpha:Math.random()*0.6+0.3,
+      phase:Math.random()*Math.PI*2
+    });
+  }
+}
+function setVfx(type){
+  if(vfxType === type) return;
+  vfxType = type;
+  seedParticles(type);
+}
+function colorForType(type){
+  switch(type){
+    case 'ash': return ['180,170,160','230,110,40'];
+    case 'snow': return ['255,255,255','170,210,255'];
+    case 'spores': return ['110,230,140','60,180,90'];
+    case 'glitch': return ['80,255,170','160,255,220'];
+    case 'embers': return ['255,170,60','255,90,40'];
+    default: return ['230,179,37','200,140,20'];
+  }
+}
+function loopVfx(){
+  vfxRaf = requestAnimationFrame(loopVfx);
+  if(!vfxCtx) return;
+  const W = vfxCanvasEl.width, H = vfxCanvasEl.height;
+  vfxCtx.clearRect(0,0,W,H);
+  if(!vfxType) return;
+  const [c1,c2] = colorForType(vfxType);
+
+  if(vfxType === 'glitch'){
+    // зелёный туман + случайные горизонтальные полосы искажения
+    vfxCtx.fillStyle = 'rgba('+c1+',0.05)';
+    vfxCtx.fillRect(0,0,W,H);
+    if(Math.random() < 0.18){
+      const y = Math.random()*H;
+      const h = 4 + Math.random()*18;
+      vfxCtx.fillStyle = 'rgba('+c2+',0.18)';
+      vfxCtx.fillRect(0, y, W, h);
+    }
+    vfxParticles.forEach(p=>{
+      p.x += Math.sin(p.phase)*0.6;
+      p.phase += 0.02;
+      p.y += p.vy*0.3;
+      if(p.y>H) p.y=0;
+      vfxCtx.fillStyle = 'rgba('+c1+','+p.alpha*0.5+')';
+      vfxCtx.fillRect(p.x, p.y, 1.5, 1.5);
+    });
+    return;
+  }
+
+  vfxParticles.forEach(p=>{
+    p.y += p.vy * (vfxType==='snow'?0.8:1.2);
+    p.x += p.vx + (vfxType==='spores' ? Math.sin(p.phase)*0.3 : 0);
+    p.phase += 0.03;
+    if(p.y > H){ p.y = -5; p.x = Math.random()*W; }
+    if(p.x > W) p.x = 0;
+    if(p.x < 0) p.x = W;
+    const col = (vfxType==='embers' && Math.random()<0.02) ? c2 : c1;
+    vfxCtx.beginPath();
+    vfxCtx.fillStyle = 'rgba('+col+','+p.alpha+')';
+    vfxCtx.arc(p.x, p.y, p.r, 0, Math.PI*2);
+    vfxCtx.fill();
+  });
+}
+
 /* ---------------- Screens ---------------- */
 
 function renderConfigMissing(){
@@ -607,6 +848,8 @@ function renderConfigMissing(){
 
 function renderRoomMissing(code){
   document.getElementById('statusLine').textContent = 'комната не найдена';
+  document.body.classList.remove('vote-mode');
+  setVfx(null);
   const app = document.getElementById('app');
   app.innerHTML = '';
   const panel = el('div',{class:'panel', 'data-tag':'Ошибка'});
@@ -619,6 +862,8 @@ function renderRoomMissing(code){
 
 function renderLobby(){
   document.getElementById('statusLine').textContent = 'ожидание · создайте или войдите в комнату';
+  document.body.classList.remove('vote-mode');
+  setVfx(null);
   const app = document.getElementById('app');
   app.innerHTML = '';
 
@@ -698,8 +943,12 @@ function renderLobby(){
   rules.appendChild(el('summary',{text:'Правила'}));
   rules.appendChild(el('div',{class:'rules-body', html:`
     Случилась катастрофа. У вас есть один бункер на троих и шесть претендентов на место.<br><br>
-    <b>Раскрытие (3 раунда).</b> По очереди каждый игрок открывает одну свою характеристику для всех — сначала профессию, затем здоровье, затем хобби. Фобия, багаж и секрет остаются в тени до конца.<br><br>
-    <b>Голосование (до 3 раундов).</b> Обсудите вслух или в чате, кто менее полезен для выживания группы, затем каждый по очереди голосует. Игрок с наибольшим числом голосов выбывает.<br><br>
+    <b>Раскрытие.</b> На своём ходу игрок сам решает, какую из ещё скрытых характеристик показать всем
+    (профессия, здоровье, хобби, фобия, багаж, секрет, пол, возраст, ориентация). Начиная с 3-го раунда
+    любой игрок на своём ходу может вместо раскрытия предложить перейти сразу к голосованию.<br><br>
+    <b>Голосование.</b> Обсудите вслух или в чате, кто менее полезен для выживания группы, затем каждый
+    по очереди голосует. Игрок с наибольшим числом голосов выбывает. Если после раунда голосования
+    осталось больше 3 игроков — голосование повторяется.<br><br>
     <b>Финал.</b> Игра заканчивается, когда в бункере остаётся 3 человека.<br><br>
     <span class="tiny">Все данные хранятся в общей базе данных на время игры — это игра на доверии между друзьями, а не защищённая система.</span>
   `}));
@@ -707,6 +956,9 @@ function renderLobby(){
 }
 
 function renderGame(s, code){
+  setVfx(s.cx || null);
+  document.body.classList.toggle('vote-mode', s.ph === 'vote');
+
   const app = document.getElementById('app');
   app.innerHTML = '';
 
@@ -714,27 +966,28 @@ function renderGame(s, code){
   badgePanel.appendChild(roomBadgeRow(code));
   app.appendChild(badgePanel);
 
-  const alertPanel = el('div',{class:'panel', 'data-tag':'Сводка ситуации'});
+  const alertPanel = el('div',{class:'panel fade-in-up', 'data-tag':'Сводка ситуации'});
   alertPanel.appendChild(el('div',{class:'alert-ticker', html:'<b>ТРЕВОГА:</b> '+s.c}));
   alertPanel.appendChild(el('div',{class:'bunker-info', text:s.b}));
   app.appendChild(alertPanel);
 
   if(s.ph==='end'){
     document.getElementById('statusLine').textContent = 'симуляция завершена';
-    const panel = el('div',{class:'panel', 'data-tag':'Итог'});
+    document.body.classList.remove('vote-mode');
+    const panel = el('div',{class:'panel fade-in-up', 'data-tag':'Итог'});
     panel.appendChild(el('h3',{text:'Двери бункера закрыты.', style:'font-family:Oswald,sans-serif; letter-spacing:1px;'}));
     const list = el('div',{class:'final-list'});
     s.p.forEach((pl,i)=>{ if(!pl.e) list.appendChild(el('div',{class:'final-item', text:'✓ '+pl.n})); });
     panel.appendChild(list);
     app.appendChild(panel);
 
-    const dossierPanel = el('div',{class:'panel','data-tag':'Полное досье'});
+    const dossierPanel = el('div',{class:'panel fade-in-up','data-tag':'Полное досье'});
     const full = document.createElement('div');
     full.className='roster';
     s.p.forEach(pl=>{
       const card = el('div',{class:'dossier'+(pl.e?' out':'')});
       card.appendChild(el('div',{class:'pname', text:pl.n}));
-      for(let c=0;c<6;c++) card.appendChild(traitRow(c, pl.v[c], true));
+      for(let c=0;c<CATS.length;c++) card.appendChild(traitRow(c, pl.v[c], true, false));
       full.appendChild(card);
     });
     dossierPanel.appendChild(full);
@@ -743,21 +996,21 @@ function renderGame(s, code){
   }
 
   const turnIdx = currentTurnPlayer(s);
-  const turnName = s.p[turnIdx].n;
+  const turnName = turnIdx>=0 ? s.p[turnIdx].n : '—';
 
   document.getElementById('statusLine').textContent =
-    (s.ph==='reveal' ? 'фаза раскрытия · раунд '+s.rd+'/3' : 'фаза голосования · раунд '+s.rd);
+    (s.ph==='reveal' ? 'фаза раскрытия · раунд '+s.rd : 'фаза голосования · раунд '+s.rd);
 
   const banner = el('div',{class:'turn-banner'});
   banner.appendChild(el('div',{html:'<span class="cursor">▮</span> Ход игрока: <b>'+turnName+'</b>'}));
-  banner.appendChild(el('div',{class:'phase-pill', text: s.ph==='reveal' ? 'РАСКРЫТИЕ '+s.rd+'/3' : 'ГОЛОСОВАНИЕ '+s.rd}));
+  banner.appendChild(el('div',{class:'phase-pill', text: s.ph==='reveal' ? 'РАСКРЫТИЕ · Р.'+s.rd : 'ГОЛОСОВАНИЕ · Р.'+s.rd}));
   app.appendChild(banner);
 
   const boardPanel = el('div',{class:'panel', 'data-tag':'Личные дела претендентов'});
   boardPanel.appendChild(renderRoster(s, {highlightTurn:true, ownIdx:-1}));
   app.appendChild(boardPanel);
 
-  const actionPanel = el('div',{class:'panel', 'data-tag':'Действие'});
+  const actionPanel = el('div',{class:'panel fade-in-up', 'data-tag':'Действие'});
   const claimSel = el('select');
   claimSel.appendChild(el('option',{value:'', text:'Выберите: кто сейчас за устройством?'}));
   s.p.forEach((pl,i)=>{
@@ -780,25 +1033,49 @@ function renderGame(s, code){
     const stamp = el('div',{class:'stamp', text:'ТВОЁ ДОСЬЕ'});
     actionArea.appendChild(stamp);
     const own = el('div',{class:'panel', style:'background:#171a1f; padding:12px 14px; margin-bottom:14px;'});
-    for(let c=0;c<6;c++) own.appendChild(traitRow(c, s.p[chosen].v[c], true));
+    for(let c=0;c<CATS.length;c++) own.appendChild(traitRow(c, s.p[chosen].v[c], true, false));
     actionArea.appendChild(own);
 
     if(s.ph==='reveal'){
-      const catIdx = s.rd - 1;
-      const already = !!((s.p[chosen].r>>catIdx)&1);
-      if(already){
-        actionArea.appendChild(el('p',{text:'Эта характеристика уже раскрыта. Передайте ход дальше.'}));
+      const mask = s.p[chosen].r;
+      const hidden = [];
+      for(let c=0;c<CATS.length;c++){ if(!((mask>>c)&1)) hidden.push(c); }
+
+      if(hidden.length===0){
+        actionArea.appendChild(el('p',{text:'У тебя уже раскрыто всё, что можно. Просто передай ход дальше.'}));
+        const skipBtn = el('button',{class:'primary', text:'Передать ход →'});
+        skipBtn.onclick = ()=>{
+          const next = JSON.parse(JSON.stringify(s));
+          advanceAfterReveal(next);
+          pushState(next);
+        };
+        actionArea.appendChild(skipBtn);
       } else {
-        actionArea.appendChild(el('p',{html:'Раскрыть для всех: <b>'+CATS[catIdx]+'</b> — «'+s.p[chosen].v[catIdx]+'»'}));
+        actionArea.appendChild(el('p',{text:'Выбери, какую характеристику раскрыть для всех:'}));
+        const grid = el('div',{class:'cat-btn-grid'});
+        hidden.forEach(catIdx=>{
+          const b = el('button',{text:CATS[catIdx]});
+          b.onclick = ()=>{
+            const next = JSON.parse(JSON.stringify(s));
+            next.p[chosen].r = next.p[chosen].r | (1<<catIdx);
+            advanceAfterReveal(next);
+            pushState(next);
+          };
+          grid.appendChild(b);
+        });
+        actionArea.appendChild(grid);
       }
-      const btn = el('button',{class:'primary', text: already? 'Продолжить →' : 'Раскрыть для всех'});
-      btn.onclick = ()=>{
-        const next = JSON.parse(JSON.stringify(s));
-        if(!already) next.p[chosen].r = next.p[chosen].r | (1<<catIdx);
-        advanceAfterReveal(next);
-        pushState(next);
-      };
-      actionArea.appendChild(btn);
+
+      if(s.rd >= EARLY_VOTE_FROM_ROUND){
+        actionArea.appendChild(el('div',{class:'tiny', style:'margin-top:10px;', text:'Можно предложить закончить раскрытие раньше срока:'}));
+        const voteEarlyBtn = el('button',{class:'ghost', style:'margin-top:6px;', text:'Начать голосование досрочно'});
+        voteEarlyBtn.onclick = ()=>{
+          const next = JSON.parse(JSON.stringify(s));
+          switchToVote(next);
+          pushState(next);
+        };
+        actionArea.appendChild(voteEarlyBtn);
+      }
     } else if(s.ph==='vote'){
       actionArea.appendChild(el('label',{text:'За кого голосуешь на исключение?'}));
       const voteSel = el('select');
@@ -824,6 +1101,7 @@ function renderGame(s, code){
 /* ---------------- Boot ---------------- */
 
 function boot(){
+  initVfxCanvas();
   if(!configOk){ renderConfigMissing(); return; }
   const params = new URLSearchParams(location.search);
   const room = params.get('room');
