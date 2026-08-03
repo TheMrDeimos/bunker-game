@@ -541,6 +541,7 @@ const BUNKERS = [
 const ALL_CATS_MASK = (1 << CATS.length) - 1;
 const MAX_REVEAL_ROUNDS = 5;   // после стольких полных раундов раскрытие принудительно уходит в голосование
 const EARLY_VOTE_FROM_ROUND = 3; // с этого раунда доступна кнопка "начать голосование досрочно"
+const MIN_PLAYERS = 4; // меньше — и бункер (на 3 места) сразу окажется полным без единого голосования
 
 function shuffle(arr){
   const a=arr.slice();
@@ -579,7 +580,8 @@ function makeGame(names){
     ph:"reveal",
     rd:1,
     tp:0,
-    vt:new Array(names.length).fill(-1)
+    vt:new Array(names.length).fill(-1),
+    claims:new Array(names.length).fill(null)
   };
 }
 
@@ -664,8 +666,15 @@ function subscribeRoom(code){
   const ref = db.ref('rooms/'+code);
   const handler = (snap)=>{
     const s = snap.val();
-    if(s) renderGame(s, code);
-    else renderRoomMissing(code);
+    if(!s){ renderRoomMissing(code); return; }
+    // старые комнаты, созданные до появления системы "мест", могли не иметь claims — добьём поле один раз
+    if(!Array.isArray(s.claims) || s.claims.length !== s.p.length){
+      const fixed = new Array(s.p.length).fill(null);
+      (s.claims||[]).forEach((v,i)=>{ if(i<fixed.length) fixed[i] = v || null; });
+      db.ref('rooms/'+code+'/claims').set(fixed);
+      s.claims = fixed;
+    }
+    renderGame(s, code);
   };
   ref.on('value', handler);
   currentOffFn = ()=> ref.off('value', handler);
@@ -673,6 +682,43 @@ function subscribeRoom(code){
 
 function pushState(s){
   db.ref('rooms/'+currentRoom).set(s);
+}
+
+/* ---------------- Идентификация игрока на этом устройстве ---------------- */
+// Каждый браузер получает свой случайный deviceId, который сохраняется локально.
+// Место (индекс игрока) в конкретной комнате привязывается к deviceId через
+// Firebase-транзакцию, поэтому дважды "занять" одно и то же место с разных
+// устройств нельзя, а посмотреть чужие раскрытые-в-своей-голове характеристики
+// через выбор чужого имени в списке больше невозможно — такого списка нет.
+function getDeviceId(){
+  let id = null;
+  try{ id = localStorage.getItem('bunker_device_id'); }catch(e){}
+  if(!id){
+    id = 'dev_' + Math.random().toString(36).slice(2) + '_' + Date.now().toString(36);
+    try{ localStorage.setItem('bunker_device_id', id); }catch(e){}
+  }
+  return id;
+}
+const myDeviceId = getDeviceId();
+
+function myPlayerIdx(s){
+  if(!Array.isArray(s.claims)) return -1;
+  return s.claims.findIndex(c=>c===myDeviceId);
+}
+
+// Возвращает Promise: 'ok' | 'taken'
+function claimSeat(code, idx, deviceId){
+  return db.ref('rooms/'+code+'/claims/'+idx).transaction(current=>{
+    if(current===null || current===undefined) return deviceId;
+    return; // не трогаем — место уже занято (abort)
+  }).then(result=>{
+    if(result.committed && result.snapshot.val()===deviceId) return 'ok';
+    return 'taken';
+  });
+}
+
+function releaseSeat(code, idx){
+  db.ref('rooms/'+code+'/claims/'+idx).set(null);
 }
 
 /* ---------------- DOM helpers ---------------- */
@@ -882,13 +928,13 @@ function renderLobby(){
   function showCreate(){
     tabCreate.className='tab active'; tabJoin.className='tab';
     body.innerHTML='';
-    body.appendChild(el('p',{text:'Впишите имена всех шестерых игроков. Игра сразу заработает в реальном времени у всех, кто откроет ссылку-приглашение.'}));
+    body.appendChild(el('p',{text:'Впиши имена игроков, которые будут участвовать. Поле можно оставить пустым — такой игрок просто не попадёт в игру: он не будет ходить, раскрывать характеристики и участвовать в голосованиях. Нужно минимум '+MIN_PLAYERS+' заполненных имени.'}));
     const grid = el('div',{class:'grid6'});
     const inputs = [];
     for(let i=0;i<6;i++){
       const wrap = el('div');
-      wrap.appendChild(el('label',{text:'Игрок '+(i+1)}));
-      const inp = el('input',{type:'text', placeholder:'Имя'});
+      wrap.appendChild(el('label',{text:'Игрок '+(i+1)+' (можно оставить пустым)'}));
+      const inp = el('input',{type:'text', placeholder:'Имя — или оставь пустым'});
       inp.setAttribute('maxlength','16');
       inputs.push(inp);
       wrap.appendChild(inp);
@@ -898,7 +944,11 @@ function renderLobby(){
     const btn = el('button',{class:'primary', text:'Создать игру'});
     const err = el('div',{class:'error-msg', text:''});
     btn.onclick = ()=>{
-      const names = inputs.map((i,idx)=>i.value.trim() || ('Игрок '+(idx+1)));
+      const names = inputs.map(i=>i.value.trim()).filter(v=>v.length>0);
+      if(names.length < MIN_PLAYERS){
+        err.textContent = 'Впиши хотя бы '+MIN_PLAYERS+' имени — иначе бункер сразу окажется полным, и играть будет не в кого.';
+        return;
+      }
       const s = makeGame(names);
       const code = genRoomCode();
       db.ref('rooms/'+code).set(s).then(()=>{
@@ -962,8 +1012,18 @@ function renderGame(s, code){
   const app = document.getElementById('app');
   app.innerHTML = '';
 
+  const myIdx = myPlayerIdx(s);
+
   const badgePanel = el('div',{class:'panel', style:'padding:12px 20px;'});
   badgePanel.appendChild(roomBadgeRow(code));
+  if(myIdx>=0){
+    const idRow = el('div',{class:'row', style:'margin-top:10px; justify-content:space-between;'});
+    idRow.appendChild(el('div',{class:'tiny', html:'Ты играешь за: <b style="color:var(--amber)">'+s.p[myIdx].n+'</b>'}));
+    const resetBtn = el('button',{class:'ghost', style:'font-size:11px; padding:8px 12px;', text:'Это не я (сбросить место)'});
+    resetBtn.onclick = ()=>{ if(confirm('Освободить это место? Придётся выбрать его заново.')) releaseSeat(code, myIdx); };
+    idRow.appendChild(resetBtn);
+    badgePanel.appendChild(idRow);
+  }
   app.appendChild(badgePanel);
 
   const alertPanel = el('div',{class:'panel fade-in-up', 'data-tag':'Сводка ситуации'});
@@ -1007,95 +1067,128 @@ function renderGame(s, code){
   app.appendChild(banner);
 
   const boardPanel = el('div',{class:'panel', 'data-tag':'Личные дела претендентов'});
-  boardPanel.appendChild(renderRoster(s, {highlightTurn:true, ownIdx:-1}));
+  boardPanel.appendChild(renderRoster(s, {highlightTurn:true, ownIdx:myIdx}));
   app.appendChild(boardPanel);
 
+  // ---- Место ещё не закреплено за этим устройством: показываем экран выбора личности,
+  // без доступа к какой-либо панели действий и без возможности заглянуть в чужие данные ----
+  if(myIdx === -1){
+    const claimPanel = el('div',{class:'panel fade-in-up', 'data-tag':'Определение личности'});
+    claimPanel.appendChild(el('p',{text:'Это устройство ещё не привязано ни к одному игроку в этой комнате. Выбери, кем из списка являешься именно ты — после этого место закрепится только за твоим браузером, и никто другой (включая тебя с другого устройства) не увидит твои скрытые характеристики.'}));
+    const seatErr = el('div',{class:'error-msg', text:''});
+    let anyFree = false;
+    s.p.forEach((pl,i)=>{
+      const taken = !!s.claims[i];
+      if(!taken) anyFree = true;
+      const row = el('div',{class:'row', style:'justify-content:space-between; padding:8px 0; border-bottom:1px dashed #2a303a;'});
+      row.appendChild(el('span',{text:pl.n}));
+      const btn = el('button',{class: taken ? 'ghost' : 'primary', text: taken ? 'Занято' : 'Это я'});
+      if(taken){ btn.setAttribute('disabled','disabled'); }
+      else{
+        btn.onclick = ()=>{
+          btn.setAttribute('disabled','disabled');
+          claimSeat(code, i, myDeviceId).then(result=>{
+            if(result==='taken'){
+              seatErr.textContent = 'Кто-то успел выбрать это место на секунду раньше — выбери другого игрока.';
+            }
+          });
+        };
+      }
+      row.appendChild(btn);
+      claimPanel.appendChild(row);
+    });
+    if(!anyFree){
+      claimPanel.appendChild(el('p',{class:'tiny', style:'margin-top:10px;', text:'Все места уже закреплены за другими устройствами. Если это твоё место — попроси того, кто его занял, нажать «Это не я (сбросить место)» в шапке комнаты.'}));
+    }
+    claimPanel.appendChild(seatErr);
+    app.appendChild(claimPanel);
+    return;
+  }
+
+  const iAmEliminated = s.p[myIdx].e;
+
   const actionPanel = el('div',{class:'panel fade-in-up', 'data-tag':'Действие'});
-  const claimSel = el('select');
-  claimSel.appendChild(el('option',{value:'', text:'Выберите: кто сейчас за устройством?'}));
-  s.p.forEach((pl,i)=>{
-    if(!pl.e) claimSel.appendChild(el('option',{value:i, text:pl.n}));
-  });
-  actionPanel.appendChild(el('label',{text:'Подтвердите личность'}));
-  actionPanel.appendChild(claimSel);
+  const stamp = el('div',{class:'stamp', text:'ТВОЁ ДОСЬЕ'});
+  actionPanel.appendChild(stamp);
+  const own = el('div',{class:'panel', style:'background:#171a1f; padding:12px 14px; margin-bottom:14px;'});
+  for(let c=0;c<CATS.length;c++) own.appendChild(traitRow(c, s.p[myIdx].v[c], true, false));
+  actionPanel.appendChild(own);
+
   const actionArea = el('div',{id:'actionArea'});
   actionPanel.appendChild(actionArea);
   app.appendChild(actionPanel);
 
-  claimSel.onchange = ()=>{
-    actionArea.innerHTML = '';
-    const chosen = parseInt(claimSel.value);
-    if(isNaN(chosen)) return;
-    if(chosen !== turnIdx){
-      actionArea.appendChild(el('p',{class:'tiny', html:'Сейчас не твой ход. Ход игрока <b>'+turnName+'</b> — просто подожди, экран обновится сам.'}));
-      return;
-    }
-    const stamp = el('div',{class:'stamp', text:'ТВОЁ ДОСЬЕ'});
-    actionArea.appendChild(stamp);
-    const own = el('div',{class:'panel', style:'background:#171a1f; padding:12px 14px; margin-bottom:14px;'});
-    for(let c=0;c<CATS.length;c++) own.appendChild(traitRow(c, s.p[chosen].v[c], true, false));
-    actionArea.appendChild(own);
+  if(iAmEliminated){
+    actionArea.appendChild(el('p',{class:'tiny', text:'Ты выбыл(а) из игры. Можешь наблюдать за дальнейшим развитием событий, но действий больше нет.'}));
+    return;
+  }
 
-    if(s.ph==='reveal'){
-      const mask = s.p[chosen].r;
-      const hidden = [];
-      for(let c=0;c<CATS.length;c++){ if(!((mask>>c)&1)) hidden.push(c); }
+  if(myIdx !== turnIdx){
+    actionArea.appendChild(el('p',{class:'tiny', html:'Сейчас не твой ход. Ход игрока <b>'+turnName+'</b> — просто подожди, экран обновится сам.'}));
+    return;
+  }
 
-      if(hidden.length===0){
-        actionArea.appendChild(el('p',{text:'У тебя уже раскрыто всё, что можно. Просто передай ход дальше.'}));
-        const skipBtn = el('button',{class:'primary', text:'Передать ход →'});
-        skipBtn.onclick = ()=>{
+  const chosen = myIdx;
+
+  if(s.ph==='reveal'){
+    const mask = s.p[chosen].r;
+    const hidden = [];
+    for(let c=0;c<CATS.length;c++){ if(!((mask>>c)&1)) hidden.push(c); }
+
+    if(hidden.length===0){
+      actionArea.appendChild(el('p',{text:'У тебя уже раскрыто всё, что можно. Просто передай ход дальше.'}));
+      const skipBtn = el('button',{class:'primary', text:'Передать ход →'});
+      skipBtn.onclick = ()=>{
+        const next = JSON.parse(JSON.stringify(s));
+        advanceAfterReveal(next);
+        pushState(next);
+      };
+      actionArea.appendChild(skipBtn);
+    } else {
+      actionArea.appendChild(el('p',{text:'Выбери, какую характеристику раскрыть для всех:'}));
+      const grid = el('div',{class:'cat-btn-grid'});
+      hidden.forEach(catIdx=>{
+        const b = el('button',{text:CATS[catIdx]});
+        b.onclick = ()=>{
           const next = JSON.parse(JSON.stringify(s));
+          next.p[chosen].r = next.p[chosen].r | (1<<catIdx);
           advanceAfterReveal(next);
           pushState(next);
         };
-        actionArea.appendChild(skipBtn);
-      } else {
-        actionArea.appendChild(el('p',{text:'Выбери, какую характеристику раскрыть для всех:'}));
-        const grid = el('div',{class:'cat-btn-grid'});
-        hidden.forEach(catIdx=>{
-          const b = el('button',{text:CATS[catIdx]});
-          b.onclick = ()=>{
-            const next = JSON.parse(JSON.stringify(s));
-            next.p[chosen].r = next.p[chosen].r | (1<<catIdx);
-            advanceAfterReveal(next);
-            pushState(next);
-          };
-          grid.appendChild(b);
-        });
-        actionArea.appendChild(grid);
-      }
-
-      if(s.rd >= EARLY_VOTE_FROM_ROUND){
-        actionArea.appendChild(el('div',{class:'tiny', style:'margin-top:10px;', text:'Можно предложить закончить раскрытие раньше срока:'}));
-        const voteEarlyBtn = el('button',{class:'ghost', style:'margin-top:6px;', text:'Начать голосование досрочно'});
-        voteEarlyBtn.onclick = ()=>{
-          const next = JSON.parse(JSON.stringify(s));
-          switchToVote(next);
-          pushState(next);
-        };
-        actionArea.appendChild(voteEarlyBtn);
-      }
-    } else if(s.ph==='vote'){
-      actionArea.appendChild(el('label',{text:'За кого голосуешь на исключение?'}));
-      const voteSel = el('select');
-      voteSel.appendChild(el('option',{value:'', text:'Выберите игрока'}));
-      s.p.forEach((pl,i)=>{
-        if(!pl.e && i!==chosen) voteSel.appendChild(el('option',{value:i, text:pl.n}));
+        grid.appendChild(b);
       });
-      actionArea.appendChild(voteSel);
-      const btn = el('button',{class:'danger', text:'Отдать голос'});
-      btn.onclick = ()=>{
-        const target = parseInt(voteSel.value);
-        if(isNaN(target)){ return; }
+      actionArea.appendChild(grid);
+    }
+
+    if(s.rd >= EARLY_VOTE_FROM_ROUND){
+      actionArea.appendChild(el('div',{class:'tiny', style:'margin-top:10px;', text:'Можно предложить закончить раскрытие раньше срока:'}));
+      const voteEarlyBtn = el('button',{class:'ghost', style:'margin-top:6px;', text:'Начать голосование досрочно'});
+      voteEarlyBtn.onclick = ()=>{
         const next = JSON.parse(JSON.stringify(s));
-        next.vt[chosen] = target;
-        advanceAfterVote(next);
+        switchToVote(next);
         pushState(next);
       };
-      actionArea.appendChild(btn);
+      actionArea.appendChild(voteEarlyBtn);
     }
-  };
+  } else if(s.ph==='vote'){
+    actionArea.appendChild(el('label',{text:'За кого голосуешь на исключение?'}));
+    const voteSel = el('select');
+    voteSel.appendChild(el('option',{value:'', text:'Выберите игрока'}));
+    s.p.forEach((pl,i)=>{
+      if(!pl.e && i!==chosen) voteSel.appendChild(el('option',{value:i, text:pl.n}));
+    });
+    actionArea.appendChild(voteSel);
+    const btn = el('button',{class:'danger', text:'Отдать голос'});
+    btn.onclick = ()=>{
+      const target = parseInt(voteSel.value);
+      if(isNaN(target)){ return; }
+      const next = JSON.parse(JSON.stringify(s));
+      next.vt[chosen] = target;
+      advanceAfterVote(next);
+      pushState(next);
+    };
+    actionArea.appendChild(btn);
+  }
 }
 
 /* ---------------- Boot ---------------- */
