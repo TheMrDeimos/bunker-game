@@ -472,7 +472,7 @@ const CATS = [
 ];
 const POOL_CAT_IDX = [0,1,2,3,4,5];
 const GENDERS = ["Мужской","Женский"];
-const ORIENTATIONS = ["Гетеросексуальность","Гомосексуальность","Бисексуальность","Асексуальность"];
+const ORIENTATIONS = ["Гетеросексуальность","Гомосексуальность","Бисексуальность","Асексуальность","Пансексуальность","Демисексуальность"];
 
 const POOLS = {
   0:["Хирург","Повар","Инженер-электрик","Программист","Учитель биологии","Военный сапёр","Психолог","Фермер",
@@ -510,7 +510,8 @@ const POOLS = {
      "Разыскивается полицией","Скрывает вторую личность","Знает, где спрятан второй бункер",
      "Уже был(а) внутри бункера до катастрофы","Тайно саботирует систему вентиляции",
      "Работает на выжившую корпорацию","Врёт о своём возрасте","Хранит оружие без разрешения",
-     "Тайно ведёт переговоры с другой группой выживших","Скрывает, что видел(а) НЛО"]
+     "Тайно ведёт переговоры с другой группой выживших","Скрывает, что видел(а) НЛО",
+     "Принципиально чайлдфри и никогда не хотел(а) детей","Раньше был(а) телохранителем важной шишки"]
 };
 
 // { t: текст катастрофы, fx: тип визуального эффекта для canvas }
@@ -539,7 +540,7 @@ const BUNKERS = [
 ];
 
 const ALL_CATS_MASK = (1 << CATS.length) - 1;
-const MAX_REVEAL_ROUNDS = 5;   // после стольких полных раундов раскрытие принудительно уходит в голосование
+const MAX_REVEAL_ROUNDS = 3;   // после стольких полных раундов раскрытие автоматически уходит в голосование
 const EARLY_VOTE_FROM_ROUND = 3; // с этого раунда доступна кнопка "начать голосование досрочно"
 const MIN_PLAYERS = 4; // меньше — и бункер (на 3 места) сразу окажется полным без единого голосования
 
@@ -592,6 +593,11 @@ function advanceAfterReveal(s){
   const act = activeIdx(s);
   if(s.tp >= act.length){
     s.tp = 0;
+    if(s.ph === "tiebreak"){
+      // спец-раунд после равенства голосов закончился — возвращаемся к голосованию без дальнейшей отсрочки
+      switchToVote(s);
+      return;
+    }
     s.rd++;
     if(s.rd > MAX_REVEAL_ROUNDS){
       switchToVote(s);
@@ -611,13 +617,24 @@ function switchToVote(s){
 function tallyAndEliminate(s){
   const counts = {};
   s.vt.forEach(t=>{ if(t !== -1 && t !== null && t !== undefined) counts[t]=(counts[t]||0)+1; });
-  let maxV=-1, target=null;
-  Object.keys(counts).forEach(k=>{
-    if(counts[k]>maxV){maxV=counts[k]; target=parseInt(k);}
-  });
-  if(target!==null){ s.p[target].e = true; }
+  let maxV = -1;
+  Object.values(counts).forEach(c=>{ if(c>maxV) maxV = c; });
+  const topCandidates = Object.keys(counts).filter(k=>counts[k]===maxV).map(k=>parseInt(k));
+
   s.vt = new Array(s.p.length).fill(-1);
   s.tp = 0;
+
+  if(maxV <= 0 || topCandidates.length !== 1){
+    // ничья (несколько кандидатов набрали одинаковый максимум) — никого не исключаем.
+    // Даём один дополнительный раунд раскрытия, чтобы у группы появилась новая информация
+    // для принятия решения, а затем автоматически возвращаемся к голосованию.
+    s.ph = "tiebreak";
+    s.rd = 1;
+    return null;
+  }
+
+  const target = topCandidates[0];
+  s.p[target].e = true;
   const act = activeIdx(s);
   if(act.length <= 3){
     s.ph = "end";
@@ -1057,13 +1074,24 @@ function renderGame(s, code){
 
   const turnIdx = currentTurnPlayer(s);
   const turnName = turnIdx>=0 ? s.p[turnIdx].n : '—';
+  const isRevealLike = (s.ph==='reveal' || s.ph==='tiebreak');
 
   document.getElementById('statusLine').textContent =
-    (s.ph==='reveal' ? 'фаза раскрытия · раунд '+s.rd : 'фаза голосования · раунд '+s.rd);
+    s.ph==='tiebreak' ? 'ничья при голосовании · доп. раскрытие'
+    : (s.ph==='reveal' ? 'фаза раскрытия · раунд '+s.rd : 'фаза голосования · раунд '+s.rd);
+
+  if(s.ph==='tiebreak'){
+    const tieNote = el('div',{class:'panel fade-in-up', 'data-tag':'Ничья'});
+    tieNote.appendChild(el('div',{class:'alert-ticker', html:'<b>ГОЛОСА РАЗДЕЛИЛИСЬ ПОРОВНУ.</b> Никто не исключён. Каждый на своём ходу раскрывает ещё одну характеристику — после этого голосование начнётся снова.'}));
+    app.appendChild(tieNote);
+  }
 
   const banner = el('div',{class:'turn-banner'});
   banner.appendChild(el('div',{html:'<span class="cursor">▮</span> Ход игрока: <b>'+turnName+'</b>'}));
-  banner.appendChild(el('div',{class:'phase-pill', text: s.ph==='reveal' ? 'РАСКРЫТИЕ · Р.'+s.rd : 'ГОЛОСОВАНИЕ · Р.'+s.rd}));
+  banner.appendChild(el('div',{class:'phase-pill', text:
+    s.ph==='tiebreak' ? 'НИЧЬЯ → РАСКРЫТИЕ'
+    : (s.ph==='reveal' ? 'РАСКРЫТИЕ · Р.'+s.rd : 'ГОЛОСОВАНИЕ · Р.'+s.rd)
+  }));
   app.appendChild(banner);
 
   const boardPanel = el('div',{class:'panel', 'data-tag':'Личные дела претендентов'});
@@ -1130,7 +1158,7 @@ function renderGame(s, code){
 
   const chosen = myIdx;
 
-  if(s.ph==='reveal'){
+  if(isRevealLike){
     const mask = s.p[chosen].r;
     const hidden = [];
     for(let c=0;c<CATS.length;c++){ if(!((mask>>c)&1)) hidden.push(c); }
@@ -1160,7 +1188,7 @@ function renderGame(s, code){
       actionArea.appendChild(grid);
     }
 
-    if(s.rd >= EARLY_VOTE_FROM_ROUND){
+    if(s.ph==='reveal' && s.rd >= EARLY_VOTE_FROM_ROUND){
       actionArea.appendChild(el('div',{class:'tiny', style:'margin-top:10px;', text:'Можно предложить закончить раскрытие раньше срока:'}));
       const voteEarlyBtn = el('button',{class:'ghost', style:'margin-top:6px;', text:'Начать голосование досрочно'});
       voteEarlyBtn.onclick = ()=>{
