@@ -760,9 +760,9 @@ function renderRoster(s, opts={}){
     card.appendChild(nameRow);
     const prevMask = prevRevealMasks[i] !== undefined ? prevRevealMasks[i] : pl.r;
     for(let c=0;c<CATS.length;c++){
-      const revealed = isOwn ? true : !!((pl.r>>c)&1);
+      const revealed = !!((pl.r>>c)&1);
       const wasRevealed = !!((prevMask>>c)&1);
-      const justRevealed = !isOwn && revealed && !wasRevealed;
+      const justRevealed = revealed && !wasRevealed;
       card.appendChild(traitRow(c, pl.v[c], revealed, justRevealed));
     }
     roster.appendChild(card);
