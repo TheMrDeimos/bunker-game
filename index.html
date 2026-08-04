@@ -296,6 +296,8 @@
   .trait-row:last-child{border-bottom:none;}
   .trait-cat{color:var(--muted); min-width:118px; flex-shrink:0;}
   .trait-val{color:var(--paper);}
+  .peek-val{color:var(--neon); font-style:italic;}
+  .peek-val::after{content:" 👁"; font-size:10px;}
   .redacted{
     background:repeating-linear-gradient(135deg,#000,#000 4px,#151515 4px,#151515 8px);
     color:transparent;
@@ -542,7 +544,68 @@ const BUNKERS = [
 const ALL_CATS_MASK = (1 << CATS.length) - 1;
 const MAX_REVEAL_ROUNDS = 3;   // после стольких полных раундов раскрытие автоматически уходит в голосование
 const EARLY_VOTE_FROM_ROUND = 3; // с этого раунда доступна кнопка "начать голосование досрочно"
+const SPECIAL_CHARGES = 2; // сколько раз за игру каждый игрок может применить одну из спецспособностей
 const MIN_PLAYERS = 4; // меньше — и бункер (на 3 места) сразу окажется полным без единого голосования
+
+/* ---------------- Особые способности ---------------- */
+// Каждому игроку при старте случайно достаются 2 РАЗНЫЕ способности из этого пула.
+// Правила использования:
+//  1) каждую из своих двух способностей можно применить максимум 1 раз за игру
+//     (то есть у игрока в сумме максимум MAX_ABILITY_USES = 2 применения за всю игру);
+//  2) в рамках одного своего хода можно применить не более ОДНОЙ способности —
+//     после этого до следующего своего хода панель способностей блокируется.
+const MAX_ABILITY_USES = 2;
+const ABILITIES = [
+  { id:0, name:"Разведка",
+    desc:"Раскрыть для всех одну скрытую характеристику выбранного игрока.",
+    type:"reveal_other" },
+  { id:1, name:"Тайный осведомитель",
+    desc:"Узнать одну скрытую характеристику любого игрока — только для себя, без раскрытия остальным.",
+    type:"peek_other" },
+  { id:2, name:"Пересдача",
+    desc:"Заменить одну свою ещё нераскрытую характеристику на новую случайную из того же пула.",
+    type:"reroll_own" },
+  { id:3, name:"Отвод голоса",
+    desc:"Только во время голосования: аннулировать голос одного из игроков, уже поданный в этом раунде.",
+    type:"cancel_vote", phase:"vote" },
+  { id:4, name:"Щит",
+    desc:"Защититься от исключения в следующем подсчёте голосов — голоса против тебя не будут засчитаны.",
+    type:"shield_self" },
+  { id:5, name:"Отсрочка",
+    desc:"Только во время раскрытия: отложить принудительный переход к голосованию ещё на один раунд.",
+    type:"extend_reveal", phase:"reveal" },
+  { id:6, name:"Двойная разведка",
+    desc:"Раскрыть для всех сразу две случайные скрытые характеристики выбранного игрока.",
+    type:"reveal_other_double" },
+  { id:7, name:"Массовая слежка",
+    desc:"Выбрать категорию — она раскроется для всех живых игроков, у кого ещё скрыта.",
+    type:"reveal_all_category" },
+  { id:8, name:"Двойной осведомитель",
+    desc:"Узнать по одной скрытой характеристике сразу у двух игроков — только для себя.",
+    type:"peek_other_double" },
+  { id:9, name:"Обмен картами",
+    desc:"Поменяться значением одной своей нераскрытой характеристики с таким же скрытым полем другого игрока.",
+    type:"swap_trait" },
+  { id:10, name:"Диверсия",
+    desc:"Незаметно подменить одну скрытую характеристику выбранного игрока на новую случайную — для остальных выглядит так, будто ничего не произошло.",
+    type:"reroll_other" },
+  { id:11, name:"Двойной щит",
+    desc:"Защитить от исключения себя и ещё одного выбранного игрока при следующем подсчёте голосов.",
+    type:"shield_pair" },
+  { id:12, name:"Перенаправление голоса",
+    desc:"Только во время голосования: изменить, за кого именно проголосовал уже проголосовавший игрок в этом раунде.",
+    type:"redirect_vote", phase:"vote" },
+  { id:13, name:"Полная амнистия",
+    desc:"Только во время голосования: аннулировать сразу все голоса, поданные в этом раунде.",
+    type:"clear_all_votes", phase:"vote" },
+  { id:14, name:"Долгая ночь",
+    desc:"Только во время раскрытия: отложить принудительный переход к голосованию сразу на два раунда.",
+    type:"extend_reveal_long", phase:"reveal" },
+  { id:15, name:"Второе дыхание",
+    desc:"Раскрыть для всех ещё одну свою скрытую характеристику дополнительно к обычному ходу.",
+    type:"reveal_self_extra" }
+];
+function abilityById(id){ return ABILITIES.find(a=>a.id===id); }
 
 function shuffle(arr){
   const a=arr.slice();
@@ -564,13 +627,15 @@ function currentTurnPlayer(s){
 function makeGame(names){
   const pooled = {};
   POOL_CAT_IDX.forEach(catIdx=>{ pooled[catIdx] = shuffle(POOLS[catIdx]).slice(0, names.length); });
+  const abilityIds = ABILITIES.map(a=>a.id);
   const players = names.map((n,i)=>{
     const v = new Array(CATS.length);
     POOL_CAT_IDX.forEach(catIdx=>{ v[catIdx] = pooled[catIdx][i]; });
     v[6] = pick(GENDERS);
     v[7] = randInt(18,70) + " лет";
     v[8] = pick(ORIENTATIONS);
-    return { n, v, r:0, e:false };
+    const ab = shuffle(abilityIds).slice(0,2);
+    return { n, v, r:0, e:false, ab, au:0, abUsed:[], shield:false };
   });
   const cata = pick(CATASTROPHES);
   return {
@@ -582,14 +647,32 @@ function makeGame(names){
     rd:1,
     tp:0,
     vt:new Array(names.length).fill(-1),
-    claims:new Array(names.length).fill(null)
+    claims:new Array(names.length).fill(null),
+    peeks:[],
+    turnAbilityUsed:false
   };
+}
+
+// Новое значение для способности "Пересдача": для пуловых категорий (0-5) берём
+// значение, которое сейчас ни у кого не занято, чтобы характеристики оставались
+// уникальными; для пола/возраста/ориентации просто генерируем заново.
+function rerollValueFor(s, catIdx){
+  if(POOL_CAT_IDX.includes(catIdx)){
+    const used = s.p.map(pl=>pl.v[catIdx]);
+    const candidates = POOLS[catIdx].filter(v=>!used.includes(v));
+    return candidates.length ? pick(candidates) : pick(POOLS[catIdx]);
+  }
+  if(catIdx===6) return pick(GENDERS);
+  if(catIdx===7) return randInt(18,70) + " лет";
+  if(catIdx===8) return pick(ORIENTATIONS);
+  return null;
 }
 
 /* ---------------- Раскрытие ---------------- */
 
 function advanceAfterReveal(s){
   s.tp++;
+  s.turnAbilityUsed = false;
   const act = activeIdx(s);
   if(s.tp >= act.length){
     s.tp = 0;
@@ -610,6 +693,7 @@ function switchToVote(s){
   s.rd = 1;
   s.tp = 0;
   s.vt = new Array(s.p.length).fill(-1);
+  s.turnAbilityUsed = false;
 }
 
 /* ---------------- Голосование ---------------- */
@@ -617,12 +701,17 @@ function switchToVote(s){
 function tallyAndEliminate(s){
   const counts = {};
   s.vt.forEach(t=>{ if(t !== -1 && t !== null && t !== undefined) counts[t]=(counts[t]||0)+1; });
+
+  // голоса, отданные против игрока, который защищён "Щитом", в этом раунде не считаются
+  const eligible = Object.keys(counts).map(k=>parseInt(k)).filter(idx=>!s.p[idx].shield);
   let maxV = -1;
-  Object.values(counts).forEach(c=>{ if(c>maxV) maxV = c; });
-  const topCandidates = Object.keys(counts).filter(k=>counts[k]===maxV).map(k=>parseInt(k));
+  eligible.forEach(idx=>{ if(counts[idx]>maxV) maxV = counts[idx]; });
+  const topCandidates = eligible.filter(idx=>counts[idx]===maxV);
 
   s.vt = new Array(s.p.length).fill(-1);
   s.tp = 0;
+  s.turnAbilityUsed = false;
+  s.p.forEach(pl=>{ pl.shield = false; }); // щит расходуется на один подсчёт голосов, неважно, сработал он или нет
 
   if(maxV <= 0 || topCandidates.length !== 1){
     // ничья (несколько кандидатов набрали одинаковый максимум) — никого не исключаем.
@@ -646,6 +735,7 @@ function tallyAndEliminate(s){
 
 function advanceAfterVote(s){
   s.tp++;
+  s.turnAbilityUsed = false;
   const act = activeIdx(s);
   if(s.tp >= act.length){
     return tallyAndEliminate(s);
@@ -690,6 +780,22 @@ function subscribeRoom(code){
       (s.claims||[]).forEach((v,i)=>{ if(i<fixed.length) fixed[i] = v || null; });
       db.ref('rooms/'+code+'/claims').set(fixed);
       s.claims = fixed;
+    }
+    // старые комнаты могли быть созданы до появления особых способностей — раздадим их постфактум
+    const needsAbilityFix = s.p.some(pl=>!Array.isArray(pl.ab) || !Array.isArray(pl.abUsed)) || typeof s.turnAbilityUsed !== 'boolean';
+    if(needsAbilityFix){
+      const abilityIds = ABILITIES.map(a=>a.id);
+      s.p.forEach(pl=>{
+        if(!Array.isArray(pl.ab)) pl.ab = shuffle(abilityIds).slice(0,2);
+        if(typeof pl.au !== 'number') pl.au = 0;
+        if(typeof pl.shield !== 'boolean') pl.shield = false;
+        if(!Array.isArray(pl.abUsed)) pl.abUsed = [];
+      });
+      if(!Array.isArray(s.peeks)) s.peeks = [];
+      if(typeof s.turnAbilityUsed !== 'boolean') s.turnAbilityUsed = false;
+      db.ref('rooms/'+code+'/p').set(s.p);
+      db.ref('rooms/'+code+'/peeks').set(s.peeks);
+      db.ref('rooms/'+code+'/turnAbilityUsed').set(s.turnAbilityUsed);
     }
     renderGame(s, code);
   };
@@ -751,11 +857,13 @@ function el(tag, attrs={}, children=[]){
   return e;
 }
 
-function traitRow(catIdx, value, revealed, justRevealed){
+function traitRow(catIdx, value, revealed, justRevealed, peeked){
   const row = el('div',{class:'trait-row'+(justRevealed?' reveal-flash':'')});
   row.appendChild(el('span',{class:'trait-cat', text:CATS[catIdx]}));
   if(revealed){
     row.appendChild(el('span',{class:'trait-val', text:value}));
+  } else if(peeked){
+    row.appendChild(el('span',{class:'trait-val peek-val', text:value, title:'Видно только тебе — узнано способностью «Тайный осведомитель»'}));
   } else {
     row.appendChild(el('span',{class:'redacted', text:value}));
   }
@@ -764,12 +872,14 @@ function traitRow(catIdx, value, revealed, justRevealed){
 
 function renderRoster(s, opts={}){
   const roster = el('div',{class:'roster'});
+  const viewerIdx = opts.ownIdx;
   s.p.forEach((pl,i)=>{
     const isTurn = !pl.e && i===currentTurnPlayer(s) && opts.highlightTurn;
     const isOwn = opts.ownIdx===i;
     const card = el('div',{class:'dossier fade-in-up'+(pl.e?' out':'')+(isTurn?' active-turn':'')+(isOwn?' own-card':'')});
     const nameRow = el('div',{class:'pname'});
     nameRow.appendChild(el('span',{text:pl.n}));
+    if(pl.shield && (isOwn || s.ph!=='vote')) nameRow.appendChild(el('span',{class:'vote-count', style:'color:var(--neon)', text:'🛡 ЩИТ'}));
     if(s.ph==='vote' && !pl.e){
       const vc = s.vt.filter(t=>t===i).length;
       if(vc>0) nameRow.appendChild(el('span',{class:'vote-count', text:vc+' ГОЛОС(А)'}));
@@ -780,7 +890,9 @@ function renderRoster(s, opts={}){
       const revealed = !!((pl.r>>c)&1);
       const wasRevealed = !!((prevMask>>c)&1);
       const justRevealed = revealed && !wasRevealed;
-      card.appendChild(traitRow(c, pl.v[c], revealed, justRevealed));
+      const peeked = !revealed && viewerIdx>=0 && Array.isArray(s.peeks) &&
+        s.peeks.some(pk=>pk.viewer===viewerIdx && pk.target===i && pk.cat===c);
+      card.appendChild(traitRow(c, pl.v[c], revealed, justRevealed, peeked));
     }
     roster.appendChild(card);
   });
@@ -1022,6 +1134,415 @@ function renderLobby(){
   app.appendChild(rules);
 }
 
+/* ---------------- Особые способности: UI ---------------- */
+
+function renderAbilityPanel(app, s, myIdx){
+  const me = s.p[myIdx];
+  const usesLeft = MAX_ABILITY_USES - (me.au||0);
+  const abUsed = Array.isArray(me.abUsed) ? me.abUsed : [];
+  const abilityPanel = el('div',{class:'panel fade-in-up', 'data-tag':'Особые способности'});
+  abilityPanel.appendChild(el('p',{class:'tiny', text:'Осталось использований: '+usesLeft+' из '+MAX_ABILITY_USES+' за игру. Каждую свою способность можно применить только один раз, и не больше одной способности за один ход.'}));
+
+  if(usesLeft<=0){
+    abilityPanel.appendChild(el('p',{class:'tiny', text:'Способности закончились — играй дальше обычным ходом ниже.'}));
+    app.appendChild(abilityPanel);
+    return;
+  }
+
+  if(s.turnAbilityUsed){
+    abilityPanel.appendChild(el('p',{class:'tiny', text:'В этот ход способность уже применялась. Новую можно будет использовать со следующего своего хода.'}));
+    app.appendChild(abilityPanel);
+    return;
+  }
+
+  const myAbilities = (me.ab||[]).map(id=>abilityById(id)).filter(Boolean);
+  myAbilities.forEach(ab=>{
+    const row = el('div',{style:'border-bottom:1px dashed #2a303a; padding:10px 0;'});
+    row.appendChild(el('div',{style:'font-family:Oswald,sans-serif; letter-spacing:1px; color:var(--amber);', text:ab.name}));
+    row.appendChild(el('p',{class:'tiny', style:'margin:4px 0 8px;', text:ab.desc}));
+
+    if(abUsed.includes(ab.id)){
+      row.appendChild(el('p',{class:'tiny', text:'Уже использована в этой игре.'}));
+      abilityPanel.appendChild(row);
+      return;
+    }
+
+    const phaseOk = !ab.phase ||
+      (ab.phase==='vote' && s.ph==='vote') ||
+      (ab.phase==='reveal' && (s.ph==='reveal' || s.ph==='tiebreak'));
+
+    if(!phaseOk){
+      row.appendChild(el('p',{class:'tiny', text:'Недоступно в текущей фазе.'}));
+      abilityPanel.appendChild(row);
+      return;
+    }
+
+    const holder = el('div');
+    row.appendChild(holder);
+    abilityPanel.appendChild(row);
+    renderAbilityControls(holder, ab, s, myIdx);
+  });
+
+  app.appendChild(abilityPanel);
+}
+
+function renderAbilityControls(holder, ab, s, myIdx){
+  const useBtn = el('button',{class:'ghost', text:'Использовать: '+ab.name});
+  const formArea = el('div',{style:'display:none; margin-top:8px;'});
+  holder.appendChild(useBtn);
+  holder.appendChild(formArea);
+  useBtn.onclick = ()=>{
+    useBtn.style.display = 'none';
+    formArea.style.display = 'block';
+    buildAbilityForm(formArea, ab, s, myIdx);
+  };
+}
+
+function buildAbilityForm(container, ab, s, myIdx){
+  container.innerHTML = '';
+
+  const confirmAndApply = (mutator)=>{
+    const next = JSON.parse(JSON.stringify(s));
+    mutator(next);
+    next.p[myIdx].au = (next.p[myIdx].au||0) + 1;
+    next.p[myIdx].abUsed = Array.isArray(next.p[myIdx].abUsed) ? next.p[myIdx].abUsed.slice() : [];
+    if(!next.p[myIdx].abUsed.includes(ab.id)) next.p[myIdx].abUsed.push(ab.id);
+    next.turnAbilityUsed = true; // не более одной способности за ход
+    pushState(next);
+  };
+
+  if(ab.type==='reveal_other' || ab.type==='peek_other'){
+    const targetSel = el('select');
+    targetSel.appendChild(el('option',{value:'', text:'Выбери игрока'}));
+    s.p.forEach((pl,i)=>{ if(!pl.e && i!==myIdx) targetSel.appendChild(el('option',{value:i, text:pl.n})); });
+    container.appendChild(targetSel);
+
+    const catSel = el('select');
+    catSel.appendChild(el('option',{value:'', text:'Сначала выбери игрока'}));
+    container.appendChild(catSel);
+
+    targetSel.onchange = ()=>{
+      const ti = parseInt(targetSel.value);
+      catSel.innerHTML = '';
+      if(isNaN(ti)){ catSel.appendChild(el('option',{value:'', text:'Сначала выбери игрока'})); return; }
+      const hiddenCats = [];
+      for(let c=0;c<CATS.length;c++){ if(!((s.p[ti].r>>c)&1)) hiddenCats.push(c); }
+      if(hiddenCats.length===0){ catSel.appendChild(el('option',{value:'', text:'У него уже всё раскрыто'})); return; }
+      catSel.appendChild(el('option',{value:'', text:'Выбери характеристику'}));
+      hiddenCats.forEach(c=>catSel.appendChild(el('option',{value:c, text:CATS[c]})));
+    };
+
+    const btn = el('button',{class:'primary', text:'Подтвердить'});
+    btn.onclick = ()=>{
+      const ti = parseInt(targetSel.value), ci = parseInt(catSel.value);
+      if(isNaN(ti) || isNaN(ci)) return;
+      confirmAndApply(next=>{
+        if(ab.type==='reveal_other'){
+          next.p[ti].r = next.p[ti].r | (1<<ci);
+        } else {
+          next.peeks = next.peeks || [];
+          next.peeks.push({viewer:myIdx, target:ti, cat:ci});
+        }
+      });
+    };
+    container.appendChild(btn);
+
+  } else if(ab.type==='reroll_own'){
+    const mask = s.p[myIdx].r;
+    const hidden = [];
+    for(let c=0;c<CATS.length;c++){ if(!((mask>>c)&1)) hidden.push(c); }
+    if(hidden.length===0){
+      container.appendChild(el('p',{class:'tiny', text:'У тебя уже всё раскрыто — нечего менять.'}));
+      return;
+    }
+    const catSel = el('select');
+    catSel.appendChild(el('option',{value:'', text:'Какую характеристику пересдать?'}));
+    hidden.forEach(c=>catSel.appendChild(el('option',{value:c, text:CATS[c]})));
+    container.appendChild(catSel);
+    const btn = el('button',{class:'primary', text:'Подтвердить'});
+    btn.onclick = ()=>{
+      const ci = parseInt(catSel.value);
+      if(isNaN(ci)) return;
+      confirmAndApply(next=>{
+        const newVal = rerollValueFor(next, ci);
+        if(newVal!==null) next.p[myIdx].v[ci] = newVal;
+      });
+    };
+    container.appendChild(btn);
+
+  } else if(ab.type==='cancel_vote'){
+    const voters = s.p.map((pl,i)=>i).filter(i=>!s.p[i].e && s.vt[i]!==-1);
+    if(voters.length===0){
+      container.appendChild(el('p',{class:'tiny', text:'Пока никто не проголосовал в этом раунде.'}));
+      return;
+    }
+    const voterSel = el('select');
+    voterSel.appendChild(el('option',{value:'', text:'Чей голос аннулировать?'}));
+    voters.forEach(i=>voterSel.appendChild(el('option',{value:i, text:s.p[i].n+' → '+s.p[s.vt[i]].n})));
+    container.appendChild(voterSel);
+    const btn = el('button',{class:'danger', text:'Подтвердить'});
+    btn.onclick = ()=>{
+      const vi = parseInt(voterSel.value);
+      if(isNaN(vi)) return;
+      confirmAndApply(next=>{ next.vt[vi] = -1; });
+    };
+    container.appendChild(btn);
+
+  } else if(ab.type==='shield_self'){
+    container.appendChild(el('p',{class:'tiny', text:'Щит защитит тебя при следующем подсчёте голосов в этом раунде.'}));
+    const btn = el('button',{class:'primary', text:'Активировать щит'});
+    btn.onclick = ()=>{
+      confirmAndApply(next=>{ next.p[myIdx].shield = true; });
+    };
+    container.appendChild(btn);
+
+  } else if(ab.type==='extend_reveal'){
+    container.appendChild(el('p',{class:'tiny', text:'Раскрытие продлится ещё на один раунд перед автоматическим переходом к голосованию.'}));
+    const btn = el('button',{class:'primary', text:'Отложить голосование'});
+    btn.onclick = ()=>{
+      confirmAndApply(next=>{ next.rd = Math.max(1, next.rd - 1); });
+    };
+    container.appendChild(btn);
+
+  } else if(ab.type==='reveal_other_double'){
+    const targetSel = el('select');
+    targetSel.appendChild(el('option',{value:'', text:'Выбери игрока'}));
+    s.p.forEach((pl,i)=>{
+      if(pl.e || i===myIdx) return;
+      let hasHidden=false; for(let c=0;c<CATS.length;c++){ if(!((pl.r>>c)&1)){ hasHidden=true; break; } }
+      if(hasHidden) targetSel.appendChild(el('option',{value:i, text:pl.n}));
+    });
+    container.appendChild(targetSel);
+    const btn = el('button',{class:'primary', text:'Раскрыть 2 характеристики'});
+    btn.onclick = ()=>{
+      const ti = parseInt(targetSel.value);
+      if(isNaN(ti)) return;
+      confirmAndApply(next=>{
+        const mask = next.p[ti].r;
+        const hiddenCats = [];
+        for(let c=0;c<CATS.length;c++){ if(!((mask>>c)&1)) hiddenCats.push(c); }
+        shuffle(hiddenCats).slice(0,2).forEach(c=>{ next.p[ti].r = next.p[ti].r | (1<<c); });
+      });
+    };
+    container.appendChild(btn);
+
+  } else if(ab.type==='reveal_all_category'){
+    const catSel = el('select');
+    catSel.appendChild(el('option',{value:'', text:'Какую категорию раскрыть у всех?'}));
+    CATS.forEach((name,c)=>catSel.appendChild(el('option',{value:c, text:name})));
+    container.appendChild(catSel);
+    const btn = el('button',{class:'primary', text:'Раскрыть у всех'});
+    btn.onclick = ()=>{
+      const ci = parseInt(catSel.value);
+      if(isNaN(ci)) return;
+      confirmAndApply(next=>{
+        next.p.forEach(pl=>{ if(!pl.e) pl.r = pl.r | (1<<ci); });
+      });
+    };
+    container.appendChild(btn);
+
+  } else if(ab.type==='peek_other_double'){
+    const mkTargetSel = ()=>{
+      const sel = el('select');
+      sel.appendChild(el('option',{value:'', text:'Выбери игрока'}));
+      s.p.forEach((pl,i)=>{ if(!pl.e && i!==myIdx) sel.appendChild(el('option',{value:i, text:pl.n})); });
+      return sel;
+    };
+    const mkCatSel = (targetSel)=>{
+      const sel = el('select');
+      sel.appendChild(el('option',{value:'', text:'Сначала выбери игрока'}));
+      targetSel.onchange = ()=>{
+        const ti = parseInt(targetSel.value);
+        sel.innerHTML = '';
+        if(isNaN(ti)){ sel.appendChild(el('option',{value:'', text:'Сначала выбери игрока'})); return; }
+        const hiddenCats = [];
+        for(let c=0;c<CATS.length;c++){ if(!((s.p[ti].r>>c)&1)) hiddenCats.push(c); }
+        if(hiddenCats.length===0){ sel.appendChild(el('option',{value:'', text:'У него уже всё раскрыто'})); return; }
+        sel.appendChild(el('option',{value:'', text:'Выбери характеристику'}));
+        hiddenCats.forEach(c=>sel.appendChild(el('option',{value:c, text:CATS[c]})));
+      };
+      return sel;
+    };
+    container.appendChild(el('p',{class:'tiny', text:'Первый игрок и характеристика:'}));
+    const target1 = mkTargetSel(); container.appendChild(target1);
+    const cat1 = mkCatSel(target1); container.appendChild(cat1);
+    container.appendChild(el('p',{class:'tiny', style:'margin-top:10px;', text:'Второй игрок и характеристика:'}));
+    const target2 = mkTargetSel(); container.appendChild(target2);
+    const cat2 = mkCatSel(target2); container.appendChild(cat2);
+
+    const btn = el('button',{class:'primary', style:'margin-top:10px;', text:'Подтвердить'});
+    btn.onclick = ()=>{
+      const t1=parseInt(target1.value), c1=parseInt(cat1.value);
+      const t2=parseInt(target2.value), c2=parseInt(cat2.value);
+      if(isNaN(t1)||isNaN(c1)||isNaN(t2)||isNaN(c2)) return;
+      confirmAndApply(next=>{
+        next.peeks = next.peeks || [];
+        next.peeks.push({viewer:myIdx, target:t1, cat:c1});
+        next.peeks.push({viewer:myIdx, target:t2, cat:c2});
+      });
+    };
+    container.appendChild(btn);
+
+  } else if(ab.type==='swap_trait'){
+    const myHidden = [];
+    for(let c=0;c<CATS.length;c++){ if(!((s.p[myIdx].r>>c)&1)) myHidden.push(c); }
+    if(myHidden.length===0){
+      container.appendChild(el('p',{class:'tiny', text:'У тебя уже всё раскрыто — обмениваться нечем.'}));
+      return;
+    }
+    const catSel = el('select');
+    catSel.appendChild(el('option',{value:'', text:'Какой своей характеристикой обменяться?'}));
+    myHidden.forEach(c=>catSel.appendChild(el('option',{value:c, text:CATS[c]})));
+    container.appendChild(catSel);
+
+    const targetSel = el('select');
+    targetSel.appendChild(el('option',{value:'', text:'Сначала выбери категорию'}));
+    container.appendChild(targetSel);
+
+    catSel.onchange = ()=>{
+      const ci = parseInt(catSel.value);
+      targetSel.innerHTML = '';
+      if(isNaN(ci)){ targetSel.appendChild(el('option',{value:'', text:'Сначала выбери категорию'})); return; }
+      const candidates = s.p.map((pl,i)=>i).filter(i=>i!==myIdx && !s.p[i].e && !((s.p[i].r>>ci)&1));
+      if(candidates.length===0){ targetSel.appendChild(el('option',{value:'', text:'Ни у кого эта категория не скрыта'})); return; }
+      targetSel.appendChild(el('option',{value:'', text:'Выбери игрока'}));
+      candidates.forEach(i=>targetSel.appendChild(el('option',{value:i, text:s.p[i].n})));
+    };
+
+    const btn = el('button',{class:'primary', text:'Обменяться'});
+    btn.onclick = ()=>{
+      const ci = parseInt(catSel.value), ti = parseInt(targetSel.value);
+      if(isNaN(ci) || isNaN(ti)) return;
+      confirmAndApply(next=>{
+        const tmp = next.p[myIdx].v[ci];
+        next.p[myIdx].v[ci] = next.p[ti].v[ci];
+        next.p[ti].v[ci] = tmp;
+      });
+    };
+    container.appendChild(btn);
+
+  } else if(ab.type==='reroll_other'){
+    const targetSel = el('select');
+    targetSel.appendChild(el('option',{value:'', text:'Выбери игрока'}));
+    s.p.forEach((pl,i)=>{ if(!pl.e && i!==myIdx) targetSel.appendChild(el('option',{value:i, text:pl.n})); });
+    container.appendChild(targetSel);
+
+    const catSel = el('select');
+    catSel.appendChild(el('option',{value:'', text:'Сначала выбери игрока'}));
+    container.appendChild(catSel);
+
+    targetSel.onchange = ()=>{
+      const ti = parseInt(targetSel.value);
+      catSel.innerHTML = '';
+      if(isNaN(ti)){ catSel.appendChild(el('option',{value:'', text:'Сначала выбери игрока'})); return; }
+      const hiddenCats = [];
+      for(let c=0;c<CATS.length;c++){ if(!((s.p[ti].r>>c)&1)) hiddenCats.push(c); }
+      if(hiddenCats.length===0){ catSel.appendChild(el('option',{value:'', text:'У него уже всё раскрыто'})); return; }
+      catSel.appendChild(el('option',{value:'', text:'Выбери характеристику'}));
+      hiddenCats.forEach(c=>catSel.appendChild(el('option',{value:c, text:CATS[c]})));
+    };
+
+    const btn = el('button',{class:'primary', text:'Подменить незаметно'});
+    btn.onclick = ()=>{
+      const ti = parseInt(targetSel.value), ci = parseInt(catSel.value);
+      if(isNaN(ti) || isNaN(ci)) return;
+      confirmAndApply(next=>{
+        const newVal = rerollValueFor(next, ci);
+        if(newVal!==null) next.p[ti].v[ci] = newVal;
+      });
+    };
+    container.appendChild(btn);
+
+  } else if(ab.type==='shield_pair'){
+    const targetSel = el('select');
+    targetSel.appendChild(el('option',{value:'', text:'Кого защитить вместе с собой?'}));
+    s.p.forEach((pl,i)=>{ if(!pl.e && i!==myIdx) targetSel.appendChild(el('option',{value:i, text:pl.n})); });
+    container.appendChild(targetSel);
+    const btn = el('button',{class:'primary', text:'Активировать двойной щит'});
+    btn.onclick = ()=>{
+      const ti = parseInt(targetSel.value);
+      if(isNaN(ti)) return;
+      confirmAndApply(next=>{
+        next.p[myIdx].shield = true;
+        next.p[ti].shield = true;
+      });
+    };
+    container.appendChild(btn);
+
+  } else if(ab.type==='redirect_vote'){
+    const voters = s.p.map((pl,i)=>i).filter(i=>!s.p[i].e && s.vt[i]!==-1);
+    if(voters.length===0){
+      container.appendChild(el('p',{class:'tiny', text:'Пока никто не проголосовал в этом раунде.'}));
+      return;
+    }
+    const voterSel = el('select');
+    voterSel.appendChild(el('option',{value:'', text:'Чей голос перенаправить?'}));
+    voters.forEach(i=>voterSel.appendChild(el('option',{value:i, text:s.p[i].n+' → '+s.p[s.vt[i]].n})));
+    container.appendChild(voterSel);
+
+    const newTargetSel = el('select');
+    newTargetSel.appendChild(el('option',{value:'', text:'Сначала выбери голос'}));
+    container.appendChild(newTargetSel);
+
+    voterSel.onchange = ()=>{
+      const vi = parseInt(voterSel.value);
+      newTargetSel.innerHTML = '';
+      if(isNaN(vi)){ newTargetSel.appendChild(el('option',{value:'', text:'Сначала выбери голос'})); return; }
+      newTargetSel.appendChild(el('option',{value:'', text:'Новая цель голоса'}));
+      s.p.forEach((pl,i)=>{ if(!pl.e && i!==vi) newTargetSel.appendChild(el('option',{value:i, text:pl.n})); });
+    };
+
+    const btn = el('button',{class:'danger', text:'Перенаправить'});
+    btn.onclick = ()=>{
+      const vi = parseInt(voterSel.value), nt = parseInt(newTargetSel.value);
+      if(isNaN(vi) || isNaN(nt)) return;
+      confirmAndApply(next=>{ next.vt[vi] = nt; });
+    };
+    container.appendChild(btn);
+
+  } else if(ab.type==='clear_all_votes'){
+    const anyVotes = s.vt.some(v=>v!==-1);
+    if(!anyVotes){
+      container.appendChild(el('p',{class:'tiny', text:'В этом раунде пока никто не голосовал.'}));
+      return;
+    }
+    container.appendChild(el('p',{class:'tiny', text:'Все голоса, поданные в этом раунде, будут аннулированы — раунд голосования начнётся заново.'}));
+    const btn = el('button',{class:'danger', text:'Аннулировать все голоса'});
+    btn.onclick = ()=>{
+      confirmAndApply(next=>{ next.vt = new Array(next.p.length).fill(-1); });
+    };
+    container.appendChild(btn);
+
+  } else if(ab.type==='extend_reveal_long'){
+    container.appendChild(el('p',{class:'tiny', text:'Раскрытие продлится ещё на два раунда перед автоматическим переходом к голосованию.'}));
+    const btn = el('button',{class:'primary', text:'Отложить голосование на 2 раунда'});
+    btn.onclick = ()=>{
+      confirmAndApply(next=>{ next.rd = Math.max(1, next.rd - 2); });
+    };
+    container.appendChild(btn);
+
+  } else if(ab.type==='reveal_self_extra'){
+    const mask = s.p[myIdx].r;
+    const hidden = [];
+    for(let c=0;c<CATS.length;c++){ if(!((mask>>c)&1)) hidden.push(c); }
+    if(hidden.length===0){
+      container.appendChild(el('p',{class:'tiny', text:'У тебя уже раскрыто всё, что можно.'}));
+      return;
+    }
+    const catSel = el('select');
+    catSel.appendChild(el('option',{value:'', text:'Какую характеристику раскрыть дополнительно?'}));
+    hidden.forEach(c=>catSel.appendChild(el('option',{value:c, text:CATS[c]})));
+    container.appendChild(catSel);
+    const btn = el('button',{class:'primary', text:'Раскрыть дополнительно'});
+    btn.onclick = ()=>{
+      const ci = parseInt(catSel.value);
+      if(isNaN(ci)) return;
+      confirmAndApply(next=>{ next.p[myIdx].r = next.p[myIdx].r | (1<<ci); });
+    };
+    container.appendChild(btn);
+  }
+}
+
 function renderGame(s, code){
   setVfx(s.cx || null);
   document.body.classList.toggle('vote-mode', s.ph === 'vote');
@@ -1155,6 +1676,8 @@ function renderGame(s, code){
     actionArea.appendChild(el('p',{class:'tiny', html:'Сейчас не твой ход. Ход игрока <b>'+turnName+'</b> — просто подожди, экран обновится сам.'}));
     return;
   }
+
+  renderAbilityPanel(app, s, myIdx);
 
   const chosen = myIdx;
 
