@@ -7,6 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <style>
   :root{
@@ -457,6 +458,17 @@
 <script>
 /* ======================================================================
    ВСТАВЬ СЮДА СВОЙ FIREBASE CONFIG
+
+   ВАЖНО про безопасность: значения ниже (apiKey и т.д.) — это ИДЕНТИФИКАТОРЫ
+   проекта, а не секретные ключи. Firebase рассчитан на то, что apiKey виден
+   в исходном коде клиента (и на GitHub тоже), это нормально и ожидаемо.
+   Реальная защита данных настраивается не здесь, а в Firebase Console:
+     1) Realtime Database → Rules — ограничить, кто и что может читать/писать;
+     2) Authentication → Sign-in method → включить Anonymous
+        (этот файл теперь входит анонимно перед любой работой с базой);
+     3) (опционально, но желательно) App Check — чтобы к базе обращался
+        только именно этот сайт, а не случайный скрипт с твоим конфигом.
+   Готовые правила и пошаговая инструкция — в чате, где ты попросил защиту.
    ====================================================================== */
 const firebaseConfig = {
   apiKey: "AIzaSyDZRfRq8PRybsPKXws5S4yCKWaRa49t6ZA",
@@ -468,6 +480,7 @@ const firebaseConfig = {
   appId: "1:993527849241:web:a946b17695c9fe09936588"
 };
 /* ====================================================================== */
+
 
 /* ---------------- Категории и данные ---------------- */
 
@@ -1020,9 +1033,27 @@ function advanceAfterVote(s){
 
 let db = null;
 const configOk = firebaseConfig.apiKey && firebaseConfig.apiKey.indexOf("ВСТАВЬ") === -1;
+
+// Анонимная авторизация. Сама по себе она не "прячет" данные, но позволяет
+// в правилах Firebase Realtime Database потребовать auth != null — то есть
+// отклонять любые запросы напрямую через REST/curl без прохождения через
+// Firebase Auth. Реальная защита данных всегда настраивается в разделе
+// Rules консоли Firebase, а не в этом файле — см. пояснение в чате.
+let authReady = false;
 if(configOk){
   firebase.initializeApp(firebaseConfig);
   db = firebase.database();
+  firebase.auth().onAuthStateChanged(user=>{
+    if(user){
+      authReady = true;
+      boot();
+    }
+  });
+  firebase.auth().signInAnonymously().catch(err=>{
+    console.error('Anonymous auth failed:', err);
+    authReady = false;
+    renderAuthError(err);
+  });
 }
 
 let currentRoom = null;
@@ -2198,9 +2229,10 @@ function renderGame(s, code){
 
 /* ---------------- Boot ---------------- */
 
+let booted = false;
 function boot(){
-  initVfxCanvas();
-  if(!configOk){ renderConfigMissing(); return; }
+  if(booted) return; // onAuthStateChanged может сработать повторно (напр. обновление токена)
+  booted = true;
   const params = new URLSearchParams(location.search);
   const room = params.get('room');
   if(room){
@@ -2210,7 +2242,21 @@ function boot(){
   }
 }
 
-boot();
+function renderAuthError(err){
+  document.getElementById('statusLine').textContent = 'ошибка входа';
+  const app = document.getElementById('app');
+  app.innerHTML = '';
+  const panel = el('div',{class:'panel', 'data-tag':'Не удалось подключиться'});
+  panel.appendChild(el('div',{class:'config-warning', html:
+    'Не получилось анонимно авторизоваться в Firebase (нужно для работы правил безопасности).<br><br>' +
+    'Если это твой проект — открой Firebase Console → Authentication → Sign-in method и включи провайдер <b>Anonymous</b>. ' +
+    'Техническая ошибка: <code>'+(err && err.message ? err.message : String(err))+'</code>'
+  }));
+  app.appendChild(panel);
+}
+
+initVfxCanvas();
+if(!configOk){ renderConfigMissing(); }
 </script>
 </body>
 </html>
