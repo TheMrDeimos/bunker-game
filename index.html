@@ -22,6 +22,7 @@
     --muted:#8992a0;
     --green:#5c9a6b;
     --neon:#33f0ff;
+    --turn-green:#39d97a;
     --red-alert:#ff3b3b;
   }
   *{box-sizing:border-box;}
@@ -271,10 +272,14 @@
     padding:4px 0;
     box-shadow:0 2px 6px rgba(0,0,0,.4);
   }
-  .dossier.active-turn{border-color:var(--amber); box-shadow:0 0 0 1px var(--amber) inset;}
+  .dossier.active-turn{border-color:var(--turn-green); box-shadow:0 0 10px 1px rgba(57,217,122,0.55), 0 0 0 1px var(--turn-green) inset;}
   body.vote-mode .dossier.active-turn{
     border-color:var(--neon);
     box-shadow:0 0 12px 1px var(--neon), 0 0 0 1px var(--neon) inset;
+  }
+  .dossier.vote-leader{
+    border-color:var(--red-alert) !important;
+    box-shadow:0 0 16px 3px rgba(255,59,59,0.65), 0 0 0 1px var(--red-alert) inset !important;
   }
   .dossier .pname{
     font-family:'Oswald', sans-serif;
@@ -311,7 +316,7 @@
   }
   body.vote-mode .vote-count{color:var(--red-alert);}
   .own-card{
-    border:1px solid var(--amber);
+    border:3px solid var(--amber);
     background:#1a1710;
   }
   .stamp{
@@ -534,18 +539,234 @@ const CATASTROPHES = [
   {t:"Провал под землю: тектонический сдвиг обрушил города в подземные каверны.", fx:"ash"},
   {t:"Зомби-апокалипсис старого образца: инфицированные заполонили улицы.", fx:"spores"}
 ];
-const BUNKERS = [
-  "Бункер рассчитан на 3 человек. Запасов еды и воды хватит на 6 месяцев.",
-  "Бункер рассчитан на 3 человек. Есть система очистки воздуха, но еды в обрез.",
-  "Бункер рассчитан на 3 человек. Автономный генератор, ограниченный запас медикаментов.",
-  "Бункер рассчитан на 3 человек. Тесно, но безопасно минимум на год."
+// Структурированное описание бункера: по каждому ресурсу — уровень (влияет на
+// итоговый подсчёт шансов на выживание в конце игры) и несколько вариантов
+// текста на каждый уровень, чтобы описание не повторялось от игры к игре.
+const BUNKER_LEVELS = ["critical","low","average","good"];
+const BUNKER_LEVEL_WEIGHT = { critical:-2, low:-1, average:0, good:1 };
+const BUNKER_TEXT = {
+  food:{
+    critical:["Еды почти нет — на складе лишь горстка просроченных консервов.",
+      "Продовольствия катастрофически мало: рацион уже урезан до одного приёма пищи в день."],
+    low:["Еды в обрез — при экономном рационе хватит месяца на два, не больше.",
+      "Продовольствия немного: сухпайки и крупы, без права на добавку."],
+    average:["Запасов провизии хватит примерно на полгода при разумной экономии.",
+      "С едой более-менее нормально: консервы, крупы и немного сушёных овощей."],
+    good:["Продовольствия много: есть даже маленькая теплица для свежей зелени.",
+      "С едой отлично — склад забит консервами, крупами и даже есть НЗ шоколада."]
+  },
+  water:{
+    critical:["Питьевой воды почти не осталось, фильтры давно не менялись.",
+      "Воду выдают по расписанию — старая система очистки едва работает."],
+    low:["Воды немного: приходится экономить каждый литр.",
+      "Запас воды скромный, но фильтр ещё держится."],
+    average:["С водой порядок: работает система очистки, запасов хватит надолго.",
+      "Вода в норме — есть и цистерна на чёрный день, и рабочий фильтр."],
+    good:["С водой отлично: своя скважина и мощная система очистки.",
+      "Воды в избытке — есть даже небольшой резерв для гигиены и стирки."]
+  },
+  power:{
+    critical:["Электричество на грани отключения — генератор постоянно ломается.",
+      "Энергии почти нет: свет включают на пару часов в сутки."],
+    low:["С энергией туго: генератор старый и часто требует ремонта.",
+      "Электричества немного — освещение и минимум техники, не больше."],
+    average:["Генератор работает стабильно, топлива должно хватить надолго.",
+      "С электричеством порядок: основной генератор плюс небольшой резерв."],
+    good:["Есть современный генератор и солнечные панели на аварийный случай.",
+      "С энергией отлично: двойная система энергоснабжения, перебоев не бывает."]
+  },
+  medicine:{
+    critical:["Аптечка почти пуста — из медикаментов только бинты и йод.",
+      "Медикаментов катастрофически мало, антибиотиков нет вовсе."],
+    low:["Медикаментов немного: базовый набор первой помощи и немного обезболивающих.",
+      "С медициной так себе — аптечка скромная, серьёзной операции не провести."],
+    average:["Медицинский отсек оснащён неплохо: есть антибиотики и хирургический набор.",
+      "С медикаментами порядок — хватит на большинство бытовых травм и болезней."],
+    good:["Есть полноценный медотсек с операционным столом и большим запасом лекарств.",
+      "С медициной отлично: современное оборудование и солидный запас медикаментов."]
+  },
+  security:{
+    critical:["Двери бункера держатся на честном слове, оружия почти нет.",
+      "Система безопасности не работает, из защиты — только запертая дверь."],
+    low:["Охрана слабая: пара стволов и решётка на входе.",
+      "С безопасностью так себе — заперто, но при серьёзном штурме не продержится."],
+    average:["Бункер неплохо укреплён: бронированная дверь и небольшой арсенал.",
+      "С защитой порядок — есть охранная сигнализация и запас оружия."],
+    good:["Бункер отлично защищён: шлюз, камеры и полноценный арсенал.",
+      "С безопасностью отлично — многослойная защита и опытная система тревоги."]
+  }
+};
+const BUNKER_QUIRKS = [
+  "В одном из отсеков работает старый ламповый радиоприёмник — иногда ловит эфир снаружи.",
+  "Стены дальнего отсека покрыты плесенью, и с этим пока никто не разобрался.",
+  "Есть небольшая библиотека с уцелевшими довоенными книгами.",
+  "Один из двух туалетов не функционирует уже несколько недель.",
+  "Есть самодельный спортзал из подручных материалов.",
+  "В хранилище нашли ящик семян — со временем можно разбить огород.",
+  "Вентиляция громко гудит по ночам и мешает спать.",
+  "Есть небольшой аварийный запас топлива для генератора на самый крайний случай.",
+  "Радиостанция бункера почти не ловит сигнал снаружи.",
+  "В подвале нашли старый сейф, который пока никто не смог открыть.",
+  "Есть комната отдыха с настольными играми ещё довоенного выпуска.",
+  "Одна из ламп в общем коридоре постоянно мигает и действует всем на нервы.",
+  "В техническом отсеке нашли неучтённый ящик с инструментами.",
+  "Кто-то развёл в одном из углов маленький цветник на гидропонике.",
+  "Старая аварийная сирена бункера иногда включается сама по себе — никто не знает почему."
 ];
 
+function generateBunkerProfile(seats){
+  const profile = {};
+  ["food","water","power","medicine","security"].forEach(res=>{ profile[res] = pick(BUNKER_LEVELS); });
+  const parts = ["Бункер рассчитан на "+seats+" человек."];
+  parts.push(pick(BUNKER_TEXT.food[profile.food]));
+  parts.push(pick(BUNKER_TEXT.water[profile.water]));
+  parts.push(pick(BUNKER_TEXT.power[profile.power]));
+  parts.push(pick(BUNKER_TEXT.medicine[profile.medicine]));
+  parts.push(pick(BUNKER_TEXT.security[profile.security]));
+  shuffle(BUNKER_QUIRKS).slice(0, randInt(1,2)).forEach(q=>parts.push(q));
+  return { profile, text: parts.join(" ") };
+}
+
+// Скрытые твисты: неожиданные подробности о бункере или катастрофе, которые
+// раскрываются всем сразу после определённого по счёту исключения игрока.
+const TWIST_POOL = [
+  "Один из погибших координаторов бункера успел скрыть, что автоматика рассчитана всего на два года работы — потом так или иначе придётся выйти на поверхность.",
+  "Счётчик Гейгера у входа за последние сутки резко показал рост фона — снаружи стало ещё опаснее, чем казалось.",
+  "В старых записях нашли упоминание о втором, куда более крупном бункере неподалёку — но связи с ним нет.",
+  "Часть продовольствия в хранилище помечена как «неприкосновенный запас командования» — вскрывать без приказа строго запрещено.",
+  "По внутренней связи поймали обрывок чужой передачи: неизвестные утверждают, что катастрофа не была случайностью.",
+  "Обнаружена потайная дверь в служебный отсек — судя по всему, бункер проектировался не только для гражданских.",
+  "В аптечке нашли ампулы с пометкой «экспериментальный препарат» — без единого слова о том, что это и зачем.",
+  "Датчики зафиксировали слабый, но постоянный сигнал изнутри стен — источник так и не определили.",
+  "Стало известно, что один из основателей бункера перед катастрофой перевёл крупную сумму на счёт, о котором никто не знал.",
+  "На стене технического отсека нашли надпись, сделанную задолго до катастрофы: «Не открывайте дверь номер 7»."
+];
+
+// Обязанности, которые выжившие распределяют между собой в самом конце игры.
+// resource — какой ресурс бункера отвечает за базовый уровень успеха в этой роли
+// (null у «Будущего общины» — там вместо ресурса считается демографический фактор).
+const DUTY_ROLES = [
+  { id:"food", name:"Провизия и вода", desc:"Следит за распределением еды и воды, работой кухни и фильтров.", resource:"food",
+    fitProf:["Повар","Агроном","Ветеринар","Повар-кондитер","Фермер"],
+    fitHobby:["Кулинария","Охота и разделка дичи","Садоводство","Знание трав и растений","Пчеловодство","Рыбалка и вязание узлов"] },
+  { id:"repair", name:"Ремонт и энергетика", desc:"Следит за генератором, вентиляцией и техникой бункера.", resource:"power",
+    fitProf:["Инженер-электрик","Инженер-строитель","Механик","Электрик","Слесарь","Кибернетик","Физик-ядерщик","Столяр"],
+    fitHobby:["Вождение тяжёлой техники","Кузнечное дело","Реставрация техники","Вождение танкеров"] },
+  { id:"medic", name:"Медицина", desc:"Оказывает первую помощь и следит за здоровьем группы.", resource:"medicine",
+    fitProf:["Хирург","Ветеринар","Военный фельдшер","Радиолог"],
+    fitHobby:["Знание трав и растений"],
+    fitSecret:["Владеет навыками первой помощи, но скрывает это"] },
+  { id:"security", name:"Безопасность", desc:"Контролирует периметр, оружие и порядок внутри бункера.", resource:"security",
+    fitProf:["Полицейский","Военный сапёр","Снайпер","Пожарный"],
+    fitHobby:["Стрельба из лука","Боевые искусства","Рукопашный бой","Выживание в лесу"] },
+  { id:"future", name:"Будущее общины", desc:"Отвечает за моральный дух, воспитание и развитие бункера на годы вперёд.", resource:null,
+    fitProf:["Учитель биологии","Психолог"],
+    fitHobby:["Йога и медитация","Дрессировка животных"] }
+];
+function dutyRoleById(id){ return DUTY_ROLES.find(r=>r.id===id); }
+
+function playerFitsRole(pl, role){
+  let bonus = 0;
+  if(role.fitProf && role.fitProf.includes(pl.v[0])) bonus += 2;
+  if(role.fitHobby && role.fitHobby.includes(pl.v[2])) bonus += 2;
+  if(role.fitSecret && role.fitSecret.includes(pl.v[5])) bonus += 1;
+  return bonus;
+}
+
+const OUTCOME_TIERS = [
+  { min:6, label:"Уверенное выживание", texts:[
+    "Спустя месяцы бункер гудит слаженной работой: свет не мигает, еды хватает всем, а по вечерам в столовой даже слышен смех. Когда придёт время выйти на поверхность, эта группа встретит новый мир не беженцами, а первыми жителями.",
+    "Обязанности распределены разумно, и это чувствуется в мелочах — тёплая еда по расписанию, исправный генератор, дежурства без нареканий. Через несколько лет именно эта горстка людей заложит основу нового поселения."
+  ]},
+  { min:2, label:"Трудное, но выживание", texts:[
+    "Жизнь в бункере трудная, но налаженная: где-то приходится экономить, где-то — импровизировать, но серьёзных катастроф удаётся избегать. Шансы дожить до выхода на поверхность есть, и не самые плохие.",
+    "Не всё идёт гладко — то генератор барахлит, то с медикаментами туго, — но команда справляется. Выживание не гарантировано, но и обречёнными эту группу назвать нельзя."
+  ]},
+  { min:-2, label:"Балансируют на грани", texts:[
+    "Бункер держится на честном слове: обязанности распределены неидеально, ресурсов впритык, и один серьёзный кризис может обрушить всё. Шансы на долгое выживание невелики, но у группы ещё есть время всё исправить.",
+    "Слишком многое держится на одном человеке, а часть обязанностей и вовсе осталась без ответственного. Первые месяцы будут тяжёлыми — и не факт, что все переживут зиму."
+  ]},
+  { min:-Infinity, label:"Колония обречена", texts:[
+    "Распределение обязанностей вышло катастрофическим: ключевые задачи остались без хозяина, а ресурсов и так было в обрез. По самым честным прогнозам, бункер не протянет и полугода в таком состоянии.",
+    "Ни еды, ни энергии, ни того, кто мог бы всё это наладить, — решения, принятые в последний момент, дорого обойдутся группе. Это не история спасения, а отсрочка неизбежного."
+  ]}
+];
+
+function computeFinalOutcome(s){
+  const survivors = s.p.filter(pl=>!pl.e);
+  const jobs = s.jobs || {};
+  let score = survivors.length; // больше рук — больше шансов на старте
+  const roleLines = [];
+
+  DUTY_ROLES.forEach(role=>{
+    const assignedIdx = Object.keys(jobs).map(Number).find(i=>jobs[i]===role.id);
+    if(assignedIdx===undefined || !s.p[assignedIdx] || s.p[assignedIdx].e){
+      score -= 3; // важная обязанность осталась без ответственного
+      roleLines.push(role.name+': эту обязанность никто не взял на себя.');
+      return;
+    }
+    const pl = s.p[assignedIdx];
+    let roleScore = 0;
+    if(role.resource){
+      roleScore += BUNKER_LEVEL_WEIGHT[(s.bunkerProfile||{})[role.resource]] || 0;
+    } else {
+      const primeAge = survivors.filter(p=>{
+        const age = parseInt(p.v[7]); return !isNaN(age) && age>=18 && age<=45;
+      }).length;
+      roleScore += primeAge>=2 ? 2 : (primeAge===1 ? 0 : -2);
+    }
+    const fitBonus = playerFitsRole(pl, role);
+    roleScore += fitBonus;
+    score += roleScore;
+    const verdict = roleScore>=2 ? 'справляется отлично' : (roleScore<=-1 ? 'справляется с большим трудом' : 'справляется на среднем уровне');
+    roleLines.push(role.name+': '+pl.n+' — '+verdict+'.');
+  });
+
+  const tier = OUTCOME_TIERS.find(t=>score>=t.min) || OUTCOME_TIERS[OUTCOME_TIERS.length-1];
+  return { score, tierLabel: tier.label, text: pick(tier.texts), roleLines };
+}
+
 const ALL_CATS_MASK = (1 << CATS.length) - 1;
-const MAX_REVEAL_ROUNDS = 3;   // после стольких полных раундов раскрытие автоматически уходит в голосование
-const EARLY_VOTE_FROM_ROUND = 3; // с этого раунда доступна кнопка "начать голосование досрочно"
+const EARLY_VOTE_FROM_ROUND = 1; // досрочное голосование доступно с самого начала раскрытия в любом цикле
 const SPECIAL_CHARGES = 2; // сколько раз за игру каждый игрок может применить одну из спецспособностей
-const MIN_PLAYERS = 4; // меньше — и бункер (на 3 места) сразу окажется полным без единого голосования
+const MIN_PLAYERS = 4;  // меньше — и в бункере сразу не осталось бы свободных мест
+const MAX_PLAYERS = 10; // максимум участников за игру
+
+// Сколько мест в бункере (сколько человек должно ОСТАТЬСЯ в живых к концу игры)
+// в зависимости от того, сколько всего игроков участвует.
+const SEATS_BY_COUNT = { 4:2, 5:3, 6:3, 7:3, 8:4, 9:4, 10:5 };
+function finalSeats(totalPlayers){
+  return SEATS_BY_COUNT[totalPlayers] || Math.max(2, Math.ceil(totalPlayers/2));
+}
+
+// Сколько голосований (исключений) потребуется всего за игру.
+function votesNeededTotal(totalPlayers){
+  return Math.max(1, totalPlayers - finalSeats(totalPlayers));
+}
+
+// Схема количества раундов раскрытия перед каждым циклом голосования.
+// Раньше схема была фиксированной (2,2,1,1,...) и при малом числе нужных
+// голосований (например, 4 игрока => всего 2 исключения) игра заканчивалась
+// после всего 4 раундов раскрытия — почти никто ничего толком не успевал узнать.
+// Теперь общее «целевое» число раундов раскрытия за игру распределяется по
+// всем нужным циклам голосования поровну (с небольшим перевесом в начало),
+// поэтому чем меньше нужно голосований, тем длиннее каждый цикл раскрытия.
+const TARGET_TOTAL_REVEAL_ROUNDS = Math.min(CATS.length - 1, 7);
+function buildRevealSchedule(totalPlayers){
+  const cycles = votesNeededTotal(totalPlayers);
+  const base = Math.floor(TARGET_TOTAL_REVEAL_ROUNDS / cycles);
+  const extra = TARGET_TOTAL_REVEAL_ROUNDS % cycles;
+  const schedule = [];
+  for(let i=0;i<cycles;i++){
+    schedule.push(Math.max(1, base + (i < extra ? 1 : 0)));
+  }
+  return schedule;
+}
+function revealRoundsForCycle(cycle, totalPlayers){
+  const schedule = buildRevealSchedule(totalPlayers);
+  const idx = Math.min(cycle, schedule.length) - 1;
+  return schedule[Math.max(0, idx)];
+}
 
 /* ---------------- Особые способности ---------------- */
 // Каждому игроку при старте случайно достаются 2 РАЗНЫЕ способности из этого пула.
@@ -638,18 +859,30 @@ function makeGame(names){
     return { n, v, r:0, e:false, ab, au:0, abUsed:[], shield:false };
   });
   const cata = pick(CATASTROPHES);
+  const seats = finalSeats(names.length);
+  const bunkerGen = generateBunkerProfile(seats);
+  const numTwists = names.length <= 6 ? 1 : 2;
+  const twists = shuffle(TWIST_POOL).slice(0, numTwists).map((text, i)=>({
+    text, afterElim: i+1, revealed:false
+  }));
   return {
     p:players,
     c:cata.t,
     cx:cata.fx,
-    b:pick(BUNKERS),
+    b:bunkerGen.text,
+    bunkerProfile:bunkerGen.profile,
     ph:"reveal",
     rd:1,
     tp:0,
     vt:new Array(names.length).fill(-1),
     claims:new Array(names.length).fill(null),
     peeks:[],
-    turnAbilityUsed:false
+    turnAbilityUsed:false,
+    revealCycle:1,
+    eliminationsCount:0,
+    twists,
+    tieReason:null,
+    jobs:{}
   };
 }
 
@@ -682,7 +915,8 @@ function advanceAfterReveal(s){
       return;
     }
     s.rd++;
-    if(s.rd > MAX_REVEAL_ROUNDS){
+    const roundsNeeded = revealRoundsForCycle(s.revealCycle||1, s.p.length);
+    if(s.rd > roundsNeeded){
       switchToVote(s);
     }
   }
@@ -694,13 +928,17 @@ function switchToVote(s){
   s.tp = 0;
   s.vt = new Array(s.p.length).fill(-1);
   s.turnAbilityUsed = false;
+  s.tieReason = null;
 }
 
 /* ---------------- Голосование ---------------- */
 
 function tallyAndEliminate(s){
+  const activeBefore = activeIdx(s); // все, кто мог голосовать в этом раунде
+  const extendVotes = s.vt.filter(v=>v===-2).length;
+
   const counts = {};
-  s.vt.forEach(t=>{ if(t !== -1 && t !== null && t !== undefined) counts[t]=(counts[t]||0)+1; });
+  s.vt.forEach(t=>{ if(t>=0) counts[t]=(counts[t]||0)+1; });
 
   // голоса, отданные против игрока, который защищён "Щитом", в этом раунде не считаются
   const eligible = Object.keys(counts).map(k=>parseInt(k)).filter(idx=>!s.p[idx].shield);
@@ -713,24 +951,59 @@ function tallyAndEliminate(s){
   s.turnAbilityUsed = false;
   s.p.forEach(pl=>{ pl.shield = false; }); // щит расходуется на один подсчёт голосов, неважно, сработал он или нет
 
+  // Если больше половины проголосовавших попросили продлить раскрытие — никого не исключаем
+  if(extendVotes > 0 && extendVotes >= Math.ceil(activeBefore.length/2)){
+    s.ph = "tiebreak";
+    s.rd = 1;
+    s.tieReason = "extend";
+    return null;
+  }
+
   if(maxV <= 0 || topCandidates.length !== 1){
     // ничья (несколько кандидатов набрали одинаковый максимум) — никого не исключаем.
     // Даём один дополнительный раунд раскрытия, чтобы у группы появилась новая информация
     // для принятия решения, а затем автоматически возвращаемся к голосованию.
     s.ph = "tiebreak";
     s.rd = 1;
+    s.tieReason = "tie";
     return null;
   }
 
   const target = topCandidates[0];
   s.p[target].e = true;
+  s.p[target].r = ALL_CATS_MASK; // выбывший сразу полностью раскрывается всем, как в конце игры
+  s.eliminationsCount = (s.eliminationsCount||0) + 1;
+
+  // проверяем, не пора ли раскрыть один из скрытых твистов
+  if(Array.isArray(s.twists)){
+    s.twists.forEach(tw=>{
+      if(!tw.revealed && tw.afterElim <= s.eliminationsCount) tw.revealed = true;
+    });
+  }
+
+  const seats = finalSeats(s.p.length);
   const act = activeIdx(s);
-  if(act.length <= 3){
-    s.ph = "end";
+  if(act.length <= seats){
+    // выживших ровно столько, сколько мест — переходим к распределению обязанностей
+    s.ph = "assign";
+    s.tp = 0;
+    s.jobs = s.jobs || {};
   } else {
-    s.rd++;
+    // после каждого выбывания снова идём на раскрытие по расписанию, а не голосуем второй раз подряд
+    s.ph = "reveal";
+    s.rd = 1;
+    s.revealCycle = (s.revealCycle||1) + 1;
   }
   return target;
+}
+
+function advanceAfterAssign(s){
+  s.tp++;
+  const act = activeIdx(s);
+  if(s.tp >= act.length){
+    s.finalOutcome = computeFinalOutcome(s);
+    s.ph = "end";
+  }
 }
 
 function advanceAfterVote(s){
@@ -782,7 +1055,13 @@ function subscribeRoom(code){
       s.claims = fixed;
     }
     // старые комнаты могли быть созданы до появления особых способностей — раздадим их постфактум
-    const needsAbilityFix = s.p.some(pl=>!Array.isArray(pl.ab) || !Array.isArray(pl.abUsed)) || typeof s.turnAbilityUsed !== 'boolean';
+    const needsAbilityFix = s.p.some(pl=>!Array.isArray(pl.ab) || !Array.isArray(pl.abUsed))
+      || typeof s.turnAbilityUsed !== 'boolean'
+      || typeof s.revealCycle !== 'number'
+      || !s.bunkerProfile
+      || typeof s.eliminationsCount !== 'number'
+      || !Array.isArray(s.twists)
+      || typeof s.jobs !== 'object' || s.jobs===null;
     if(needsAbilityFix){
       const abilityIds = ABILITIES.map(a=>a.id);
       s.p.forEach(pl=>{
@@ -793,9 +1072,32 @@ function subscribeRoom(code){
       });
       if(!Array.isArray(s.peeks)) s.peeks = [];
       if(typeof s.turnAbilityUsed !== 'boolean') s.turnAbilityUsed = false;
-      db.ref('rooms/'+code+'/p').set(s.p);
-      db.ref('rooms/'+code+'/peeks').set(s.peeks);
-      db.ref('rooms/'+code+'/turnAbilityUsed').set(s.turnAbilityUsed);
+      if(typeof s.revealCycle !== 'number') s.revealCycle = 1;
+      if(!s.bunkerProfile){
+        const seats = finalSeats(s.p.length);
+        const gen = generateBunkerProfile(seats);
+        s.bunkerProfile = gen.profile;
+        if(!s.b) s.b = gen.text;
+      }
+      if(typeof s.eliminationsCount !== 'number') s.eliminationsCount = s.p.filter(pl=>pl.e).length;
+      if(!Array.isArray(s.twists)){
+        const numTwists = s.p.length <= 6 ? 1 : 2;
+        s.twists = shuffle(TWIST_POOL).slice(0, numTwists).map((text,i)=>({ text, afterElim:i+1, revealed:false }));
+      }
+      if(typeof s.jobs !== 'object' || s.jobs===null) s.jobs = {};
+      if(typeof s.tieReason === 'undefined') s.tieReason = null;
+      db.ref('rooms/'+code).update({
+        p: s.p,
+        peeks: s.peeks,
+        turnAbilityUsed: s.turnAbilityUsed,
+        revealCycle: s.revealCycle,
+        bunkerProfile: s.bunkerProfile,
+        b: s.b,
+        eliminationsCount: s.eliminationsCount,
+        twists: s.twists,
+        jobs: s.jobs,
+        tieReason: s.tieReason
+      });
     }
     renderGame(s, code);
   };
@@ -873,10 +1175,28 @@ function traitRow(catIdx, value, revealed, justRevealed, peeked){
 function renderRoster(s, opts={}){
   const roster = el('div',{class:'roster'});
   const viewerIdx = opts.ownIdx;
+
+  // игрок(и), набравшие сейчас больше всего голосов в этом раунде, но ещё не исключённые —
+  // подсвечиваются красной рамкой как "под угрозой"
+  let voteLeaders = [];
+  if(s.ph==='vote'){
+    const counts = {};
+    s.vt.forEach(t=>{ if(t>=0) counts[t]=(counts[t]||0)+1; });
+    let maxV = 0;
+    Object.values(counts).forEach(c=>{ if(c>maxV) maxV=c; });
+    if(maxV>0) voteLeaders = Object.keys(counts).filter(k=>counts[k]===maxV).map(Number);
+  }
+
   s.p.forEach((pl,i)=>{
     const isTurn = !pl.e && i===currentTurnPlayer(s) && opts.highlightTurn;
     const isOwn = opts.ownIdx===i;
-    const card = el('div',{class:'dossier fade-in-up'+(pl.e?' out':'')+(isTurn?' active-turn':'')+(isOwn?' own-card':'')});
+    const isLeader = !pl.e && voteLeaders.includes(i);
+    const card = el('div',{class:'dossier fade-in-up'
+      +(pl.e?' out':'')
+      +(isTurn && !isOwn ? ' active-turn':'')
+      +(isOwn?' own-card':'')
+      +(isLeader?' vote-leader':'')
+    });
     const nameRow = el('div',{class:'pname'});
     nameRow.appendChild(el('span',{text:pl.n}));
     if(pl.shield && (isOwn || s.ph!=='vote')) nameRow.appendChild(el('span',{class:'vote-count', style:'color:var(--neon)', text:'🛡 ЩИТ'}));
@@ -1057,10 +1377,10 @@ function renderLobby(){
   function showCreate(){
     tabCreate.className='tab active'; tabJoin.className='tab';
     body.innerHTML='';
-    body.appendChild(el('p',{text:'Впиши имена игроков, которые будут участвовать. Поле можно оставить пустым — такой игрок просто не попадёт в игру: он не будет ходить, раскрывать характеристики и участвовать в голосованиях. Нужно минимум '+MIN_PLAYERS+' заполненных имени.'}));
+    body.appendChild(el('p',{text:'Впиши имена игроков, которые будут участвовать (от '+MIN_PLAYERS+' до '+MAX_PLAYERS+'). Поле можно оставить пустым — такой игрок просто не попадёт в игру: он не будет ходить, раскрывать характеристики и участвовать в голосованиях.'}));
     const grid = el('div',{class:'grid6'});
     const inputs = [];
-    for(let i=0;i<6;i++){
+    for(let i=0;i<MAX_PLAYERS;i++){
       const wrap = el('div');
       wrap.appendChild(el('label',{text:'Игрок '+(i+1)+' (можно оставить пустым)'}));
       const inp = el('input',{type:'text', placeholder:'Имя — или оставь пустым'});
@@ -1076,6 +1396,10 @@ function renderLobby(){
       const names = inputs.map(i=>i.value.trim()).filter(v=>v.length>0);
       if(names.length < MIN_PLAYERS){
         err.textContent = 'Впиши хотя бы '+MIN_PLAYERS+' имени — иначе бункер сразу окажется полным, и играть будет не в кого.';
+        return;
+      }
+      if(names.length > MAX_PLAYERS){
+        err.textContent = 'Максимум '+MAX_PLAYERS+' игроков за одну игру.';
         return;
       }
       const s = makeGame(names);
@@ -1121,14 +1445,28 @@ function renderLobby(){
   const rules = el('details');
   rules.appendChild(el('summary',{text:'Правила'}));
   rules.appendChild(el('div',{class:'rules-body', html:`
-    Случилась катастрофа. У вас есть один бункер на троих и шесть претендентов на место.<br><br>
+    Случилась катастрофа. Есть один бункер с ограниченным числом мест и от ${MIN_PLAYERS} до ${MAX_PLAYERS}
+    претендентов. Число мест в бункере зависит от того, сколько всего игроков участвует:
+    4→2, 5→3, 6→3, 7→3, 8→4, 9→4, 10→5.<br><br>
     <b>Раскрытие.</b> На своём ходу игрок сам решает, какую из ещё скрытых характеристик показать всем
-    (профессия, здоровье, хобби, фобия, багаж, секрет, пол, возраст, ориентация). Начиная с 3-го раунда
-    любой игрок на своём ходу может вместо раскрытия предложить перейти сразу к голосованию.<br><br>
+    (профессия, здоровье, хобби, фобия, багаж, секрет, пол, возраст, ориентация). В любой момент раскрытия
+    можно предложить перейти сразу к голосованию досрочно.<br><br>
+    <b>Цикл игры.</b> Число раундов раскрытия перед каждым голосованием подстраивается под то, сколько
+    всего исключений нужно провести: чем меньше игроков придётся выгнать, тем длиннее и содержательнее
+    будет каждый цикл раскрытия — игра не закончится, толком ничего не раскрыв.<br><br>
     <b>Голосование.</b> Обсудите вслух или в чате, кто менее полезен для выживания группы, затем каждый
-    по очереди голосует. Игрок с наибольшим числом голосов выбывает. Если после раунда голосования
-    осталось больше 3 игроков — голосование повторяется.<br><br>
-    <b>Финал.</b> Игра заканчивается, когда в бункере остаётся 3 человека.<br><br>
+    по очереди голосует. Игрок с наибольшим числом голосов выбывает и сразу же полностью раскрывается —
+    его характеристики становятся видны всем, как в финале игры. Если голоса разделились поровну — никого
+    не исключают, даётся ещё один раунд раскрытия, и голосование проводится заново. Если группа пока не
+    уверена, кого исключать, вместо голоса можно предложить продлить раскрытие — если так выскажется
+    больше половины голосующих, исключения в этом раунде не будет.<br><br>
+    <b>Скрытые твисты.</b> После одного-двух исключений (зависит от числа игроков) всем внезапно
+    открывается неожиданная подробность о бункере или катастрофе — она может изменить расклад сил.<br><br>
+    <b>Финал и распределение обязанностей.</b> Как только в бункере остаётся нужное число выживших, они
+    по очереди распределяют между собой обязанности (провизия и вода, ремонт и энергетика, медицина,
+    безопасность, будущее общины). От того, кто и что на себя взял — с учётом профессии, хобби и того,
+    что реально есть в бункере, — зависит итоговый вердикт: выживет группа или нет, и с каким сюжетным
+    продолжением.<br><br>
     <span class="tiny">Все данные хранятся в общей базе данных на время игры — это игра на доверии между друзьями, а не защищённая система.</span>
   `}));
   app.appendChild(rules);
@@ -1271,7 +1609,7 @@ function buildAbilityForm(container, ab, s, myIdx){
     container.appendChild(btn);
 
   } else if(ab.type==='cancel_vote'){
-    const voters = s.p.map((pl,i)=>i).filter(i=>!s.p[i].e && s.vt[i]!==-1);
+    const voters = s.p.map((pl,i)=>i).filter(i=>!s.p[i].e && s.vt[i]>=0);
     if(voters.length===0){
       container.appendChild(el('p',{class:'tiny', text:'Пока никто не проголосовал в этом раунде.'}));
       return;
@@ -1470,7 +1808,7 @@ function buildAbilityForm(container, ab, s, myIdx){
     container.appendChild(btn);
 
   } else if(ab.type==='redirect_vote'){
-    const voters = s.p.map((pl,i)=>i).filter(i=>!s.p[i].e && s.vt[i]!==-1);
+    const voters = s.p.map((pl,i)=>i).filter(i=>!s.p[i].e && s.vt[i]>=0);
     if(voters.length===0){
       container.appendChild(el('p',{class:'tiny', text:'Пока никто не проголосовал в этом раунде.'}));
       return;
@@ -1501,7 +1839,7 @@ function buildAbilityForm(container, ab, s, myIdx){
     container.appendChild(btn);
 
   } else if(ab.type==='clear_all_votes'){
-    const anyVotes = s.vt.some(v=>v!==-1);
+    const anyVotes = s.vt.some(v=>v>=0);
     if(!anyVotes){
       container.appendChild(el('p',{class:'tiny', text:'В этом раунде пока никто не голосовал.'}));
       return;
@@ -1569,6 +1907,18 @@ function renderGame(s, code){
   alertPanel.appendChild(el('div',{class:'bunker-info', text:s.b}));
   app.appendChild(alertPanel);
 
+  const revealedTwists = Array.isArray(s.twists) ? s.twists.filter(tw=>tw.revealed) : [];
+  if(revealedTwists.length>0){
+    const twistPanel = el('div',{class:'panel fade-in-up', 'data-tag':'Внезапная подробность'});
+    revealedTwists.forEach(tw=>{
+      twistPanel.appendChild(el('div',{class:'alert-ticker', style:'border-color:var(--neon); color:#bff7ff; margin-bottom:8px;', html:'<b>ТВИСТ:</b> '+tw.text}));
+    });
+    app.appendChild(twistPanel);
+  }
+
+  const turnIdx = currentTurnPlayer(s);
+  const turnName = turnIdx>=0 ? s.p[turnIdx].n : '—';
+
   if(s.ph==='end'){
     document.getElementById('statusLine').textContent = 'симуляция завершена';
     document.body.classList.remove('vote-mode');
@@ -1579,12 +1929,31 @@ function renderGame(s, code){
     panel.appendChild(list);
     app.appendChild(panel);
 
+    if(s.finalOutcome){
+      const outcomePanel = el('div',{class:'panel fade-in-up', 'data-tag':'Судьба общины'});
+      outcomePanel.appendChild(el('div',{class:'stamp', text:s.finalOutcome.tierLabel}));
+      if(Array.isArray(s.finalOutcome.roleLines) && s.finalOutcome.roleLines.length){
+        const rolesBox = el('div',{style:'margin-bottom:12px;'});
+        s.finalOutcome.roleLines.forEach(line=>rolesBox.appendChild(el('p',{class:'tiny', style:'margin:4px 0;', text:line})));
+        outcomePanel.appendChild(rolesBox);
+      }
+      outcomePanel.appendChild(el('p',{style:'line-height:1.7;', text:s.finalOutcome.text}));
+      app.appendChild(outcomePanel);
+    }
+
     const dossierPanel = el('div',{class:'panel fade-in-up','data-tag':'Полное досье'});
     const full = document.createElement('div');
     full.className='roster';
-    s.p.forEach(pl=>{
+    s.p.forEach((pl,i)=>{
       const card = el('div',{class:'dossier'+(pl.e?' out':'')});
-      card.appendChild(el('div',{class:'pname', text:pl.n}));
+      const nameRow = el('div',{class:'pname'});
+      nameRow.appendChild(el('span',{text:pl.n}));
+      const jobId = (s.jobs||{})[i];
+      if(!pl.e && jobId){
+        const role = dutyRoleById(jobId);
+        if(role) nameRow.appendChild(el('span',{class:'vote-count', text:role.name}));
+      }
+      card.appendChild(nameRow);
       for(let c=0;c<CATS.length;c++) card.appendChild(traitRow(c, pl.v[c], true, false));
       full.appendChild(card);
     });
@@ -1593,24 +1962,93 @@ function renderGame(s, code){
     return;
   }
 
-  const turnIdx = currentTurnPlayer(s);
-  const turnName = turnIdx>=0 ? s.p[turnIdx].n : '—';
+  if(s.ph==='assign'){
+    document.body.classList.remove('vote-mode');
+    document.getElementById('statusLine').textContent = 'бункер укомплектован · распределение обязанностей';
+    const assignBanner = el('div',{class:'turn-banner'});
+    assignBanner.appendChild(el('div',{html:'<span class="cursor">▮</span> Выбирает обязанность: <b>'+turnName+'</b>'}));
+    assignBanner.appendChild(el('div',{class:'phase-pill', text:'РАСПРЕДЕЛЕНИЕ'}));
+    app.appendChild(assignBanner);
+
+    const introPanel = el('div',{class:'panel fade-in-up', 'data-tag':'Последний шаг'});
+    introPanel.appendChild(el('p',{text:'Вы заняли все места в бункере. Прежде чем закрыть двери, распределите между собой обязанности — от этого зависит, выживет ли группа.'}));
+    const rolesInfo = el('div',{class:'roster'});
+    DUTY_ROLES.forEach(role=>{
+      const takenIdx = Object.keys(s.jobs||{}).map(Number).find(i=>s.jobs[i]===role.id);
+      const card = el('div',{class:'dossier'+(takenIdx!==undefined?' out':'')});
+      card.appendChild(el('div',{class:'pname', text:role.name}));
+      card.appendChild(el('p',{class:'tiny', text:role.desc}));
+      if(takenIdx!==undefined) card.appendChild(el('p',{class:'tiny', style:'color:var(--amber)', text:'Занято: '+s.p[takenIdx].n}));
+      rolesInfo.appendChild(card);
+    });
+    introPanel.appendChild(rolesInfo);
+    app.appendChild(introPanel);
+
+    if(myIdx===-1){
+      app.appendChild(el('div',{class:'panel fade-in-up', 'data-tag':'Наблюдение', html:'<p class="tiny">Это устройство не привязано ни к одному из выживших, поэтому здесь только наблюдение за распределением обязанностей.</p>'}));
+      return;
+    }
+    if(myIdx!==turnIdx){
+      const waitPanel = el('div',{class:'panel fade-in-up', 'data-tag':'Действие'});
+      waitPanel.appendChild(el('p',{class:'tiny', html:'Сейчас свою обязанность выбирает <b>'+turnName+'</b>. Экран обновится сам, когда очередь дойдёт до тебя.'}));
+      app.appendChild(waitPanel);
+      return;
+    }
+
+    const pickPanel = el('div',{class:'panel fade-in-up', 'data-tag':'Твой выбор'});
+    const freeRoles = DUTY_ROLES.filter(role=>{
+      return Object.keys(s.jobs||{}).map(Number).find(i=>s.jobs[i]===role.id) === undefined;
+    });
+    if(freeRoles.length===0){
+      pickPanel.appendChild(el('p',{text:'Все обязанности уже заняты — ты остаёшься универсальным помощником, готовым подстраховать любого.'}));
+      const okBtn = el('button',{class:'primary', text:'Понятно, дальше'});
+      okBtn.onclick = ()=>{
+        const next = JSON.parse(JSON.stringify(s));
+        advanceAfterAssign(next);
+        pushState(next);
+      };
+      pickPanel.appendChild(okBtn);
+    } else {
+      pickPanel.appendChild(el('p',{text:'Какую обязанность берёшь на себя?'}));
+      const grid = el('div',{class:'cat-btn-grid'});
+      freeRoles.forEach(role=>{
+        const b = el('button',{text:role.name});
+        b.title = role.desc;
+        b.onclick = ()=>{
+          const next = JSON.parse(JSON.stringify(s));
+          next.jobs = next.jobs || {};
+          next.jobs[myIdx] = role.id;
+          advanceAfterAssign(next);
+          pushState(next);
+        };
+        grid.appendChild(b);
+      });
+      pickPanel.appendChild(grid);
+    }
+    app.appendChild(pickPanel);
+    return;
+  }
+
   const isRevealLike = (s.ph==='reveal' || s.ph==='tiebreak');
+  const isExtendTie = s.ph==='tiebreak' && s.tieReason==='extend';
 
   document.getElementById('statusLine').textContent =
-    s.ph==='tiebreak' ? 'ничья при голосовании · доп. раскрытие'
+    s.ph==='tiebreak' ? (isExtendTie ? 'группа попросила продлить раскрытие' : 'ничья при голосовании · доп. раскрытие')
     : (s.ph==='reveal' ? 'фаза раскрытия · раунд '+s.rd : 'фаза голосования · раунд '+s.rd);
 
   if(s.ph==='tiebreak'){
-    const tieNote = el('div',{class:'panel fade-in-up', 'data-tag':'Ничья'});
-    tieNote.appendChild(el('div',{class:'alert-ticker', html:'<b>ГОЛОСА РАЗДЕЛИЛИСЬ ПОРОВНУ.</b> Никто не исключён. Каждый на своём ходу раскрывает ещё одну характеристику — после этого голосование начнётся снова.'}));
+    const tieNote = el('div',{class:'panel fade-in-up', 'data-tag': isExtendTie ? 'Продление' : 'Ничья'});
+    tieNote.appendChild(el('div',{class:'alert-ticker', html: isExtendTie
+      ? '<b>ГРУППА ПОПРОСИЛА ВРЕМЯ.</b> Большинство проголосовавших выбрали продлить раскрытие вместо исключения. Каждый на своём ходу раскрывает ещё одну характеристику — после этого голосование начнётся снова.'
+      : '<b>ГОЛОСА РАЗДЕЛИЛИСЬ ПОРОВНУ.</b> Никто не исключён. Каждый на своём ходу раскрывает ещё одну характеристику — после этого голосование начнётся снова.'
+    }));
     app.appendChild(tieNote);
   }
 
   const banner = el('div',{class:'turn-banner'});
   banner.appendChild(el('div',{html:'<span class="cursor">▮</span> Ход игрока: <b>'+turnName+'</b>'}));
   banner.appendChild(el('div',{class:'phase-pill', text:
-    s.ph==='tiebreak' ? 'НИЧЬЯ → РАСКРЫТИЕ'
+    s.ph==='tiebreak' ? (isExtendTie ? 'ПРОДЛЕНИЕ → РАСКРЫТИЕ' : 'НИЧЬЯ → РАСКРЫТИЕ')
     : (s.ph==='reveal' ? 'РАСКРЫТИЕ · Р.'+s.rd : 'ГОЛОСОВАНИЕ · Р.'+s.rd)
   }));
   app.appendChild(banner);
@@ -1722,6 +2160,12 @@ function renderGame(s, code){
       actionArea.appendChild(voteEarlyBtn);
     }
   } else if(s.ph==='vote'){
+    const activeCount = activeIdx(s).length;
+    const extendCount = s.vt.filter(v=>v===-2).length;
+    const extendNeeded = Math.ceil(activeCount/2);
+    if(extendCount>0){
+      actionArea.appendChild(el('p',{class:'tiny', text:'За продление раскрытия уже высказались: '+extendCount+' из '+extendNeeded+' нужных.'}));
+    }
     actionArea.appendChild(el('label',{text:'За кого голосуешь на исключение?'}));
     const voteSel = el('select');
     voteSel.appendChild(el('option',{value:'', text:'Выберите игрока'}));
@@ -1739,6 +2183,16 @@ function renderGame(s, code){
       pushState(next);
     };
     actionArea.appendChild(btn);
+
+    actionArea.appendChild(el('div',{class:'tiny', style:'margin-top:12px;', text:'Не уверены, кого исключать? Можно вместо голоса предложить ещё один раунд раскрытия — если так выскажется больше половины ещё голосующих, исключения в этом раунде не будет.'}));
+    const extendBtn = el('button',{class:'ghost', style:'margin-top:6px;', text:'Предложить продлить раскрытие'});
+    extendBtn.onclick = ()=>{
+      const next = JSON.parse(JSON.stringify(s));
+      next.vt[chosen] = -2;
+      advanceAfterVote(next);
+      pushState(next);
+    };
+    actionArea.appendChild(extendBtn);
   }
 }
 
