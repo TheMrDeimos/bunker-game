@@ -903,6 +903,8 @@ function makeGame(names){
     eliminationsCount:0,
     twists,
     tieReason:null,
+    proposal:null,
+    lastProposalNote:null,
     jobs:{}
   };
 }
@@ -927,6 +929,7 @@ function rerollValueFor(s, catIdx){
 function advanceAfterReveal(s){
   s.tp++;
   s.turnAbilityUsed = false;
+  s.lastProposalNote = null;
   const act = activeIdx(s);
   if(s.tp >= act.length){
     s.tp = 0;
@@ -952,12 +955,57 @@ function switchToVote(s){
   s.tieReason = null;
 }
 
+/* ---------------- Коллективные предложения (нужно согласие всех живых) ---------------- */
+// Пока предложение не разрешено (принято всеми или отклонено кем-то одним),
+// обычные действия хода (раскрытие/голосование) недоступны — игра "на паузе".
+// Отказ хотя бы одного игрока полностью отменяет предложение и возвращает
+// игру ровно в ту фазу/раунд/ход, в которых она была до предложения.
+const PROPOSAL_LABELS = {
+  early_vote: "Досрочное голосование",
+  extend: "Продление раскрытия"
+};
+
+function createProposal(s, type, byIdx){
+  s.proposal = { type, by: byIdx, responses: { [byIdx]: true } };
+}
+
+function checkProposalConsensus(s){
+  if(!s.proposal) return;
+  const act = activeIdx(s);
+  const allAgreed = act.length>0 && act.every(i=>s.proposal.responses[i]===true);
+  if(!allAgreed) return;
+  const type = s.proposal.type;
+  s.proposal = null;
+  if(type === "early_vote"){
+    switchToVote(s);
+    s.lastProposalNote = "Все согласились — переходим к голосованию.";
+  } else if(type === "extend"){
+    s.ph = "tiebreak";
+    s.rd = 1;
+    s.tieReason = "extend";
+    s.vt = new Array(s.p.length).fill(-1);
+    s.tp = 0;
+    s.turnAbilityUsed = false;
+    s.lastProposalNote = "Все согласились продлить раскрытие ещё на раунд.";
+  }
+}
+
+function respondToProposal(s, myIdx, agree){
+  if(!s.proposal) return;
+  if(!agree){
+    const label = PROPOSAL_LABELS[s.proposal.type] || "Предложение";
+    s.lastProposalNote = label+' отклонено — против '+(s.p[myIdx] ? s.p[myIdx].n : 'один из игроков')+'. Игра продолжается как прежде.';
+    s.proposal = null;
+    return;
+  }
+  s.proposal.responses = s.proposal.responses || {};
+  s.proposal.responses[myIdx] = true;
+  checkProposalConsensus(s);
+}
+
 /* ---------------- Голосование ---------------- */
 
 function tallyAndEliminate(s){
-  const activeBefore = activeIdx(s); // все, кто мог голосовать в этом раунде
-  const extendVotes = s.vt.filter(v=>v===-2).length;
-
   const counts = {};
   s.vt.forEach(t=>{ if(t>=0) counts[t]=(counts[t]||0)+1; });
 
@@ -971,14 +1019,6 @@ function tallyAndEliminate(s){
   s.tp = 0;
   s.turnAbilityUsed = false;
   s.p.forEach(pl=>{ pl.shield = false; }); // щит расходуется на один подсчёт голосов, неважно, сработал он или нет
-
-  // Если больше половины проголосовавших попросили продлить раскрытие — никого не исключаем
-  if(extendVotes > 0 && extendVotes >= Math.ceil(activeBefore.length/2)){
-    s.ph = "tiebreak";
-    s.rd = 1;
-    s.tieReason = "extend";
-    return null;
-  }
 
   if(maxV <= 0 || topCandidates.length !== 1){
     // ничья (несколько кандидатов набрали одинаковый максимум) — никого не исключаем.
@@ -1030,6 +1070,7 @@ function advanceAfterAssign(s){
 function advanceAfterVote(s){
   s.tp++;
   s.turnAbilityUsed = false;
+  s.lastProposalNote = null;
   const act = activeIdx(s);
   if(s.tp >= act.length){
     return tallyAndEliminate(s);
@@ -1578,13 +1619,16 @@ function renderAbilityControls(holder, ab, s, myIdx){
 function buildAbilityForm(container, ab, s, myIdx){
   container.innerHTML = '';
 
-  const confirmAndApply = (mutator)=>{
+  const confirmAndApply = (mutator, logText)=>{
     const next = JSON.parse(JSON.stringify(s));
     mutator(next);
     next.p[myIdx].au = (next.p[myIdx].au||0) + 1;
     next.p[myIdx].abUsed = Array.isArray(next.p[myIdx].abUsed) ? next.p[myIdx].abUsed.slice() : [];
     if(!next.p[myIdx].abUsed.includes(ab.id)) next.p[myIdx].abUsed.push(ab.id);
     next.turnAbilityUsed = true; // не более одной способности за ход
+    if(logText){
+      next.abilityLog = { text: logText, id: ((s.abilityLog && s.abilityLog.id) || 0) + 1 };
+    }
     pushState(next);
   };
 
@@ -1613,14 +1657,16 @@ function buildAbilityForm(container, ab, s, myIdx){
     btn.onclick = ()=>{
       const ti = parseInt(targetSel.value), ci = parseInt(catSel.value);
       if(isNaN(ti) || isNaN(ci)) return;
-      confirmAndApply(next=>{
-        if(ab.type==='reveal_other'){
+      if(ab.type==='reveal_other'){
+        confirmAndApply(next=>{
           next.p[ti].r = next.p[ti].r | (1<<ci);
-        } else {
+        }, '🔭 '+s.p[myIdx].n+' раскрыл(а) через «Разведку»: у '+s.p[ti].n+' — '+CATS[ci]+' = «'+s.p[ti].v[ci]+'».');
+      } else {
+        confirmAndApply(next=>{
           next.peeks = next.peeks || [];
           next.peeks.push({viewer:myIdx, target:ti, cat:ci});
-        }
-      });
+        });
+      }
     };
     container.appendChild(btn);
 
@@ -1694,12 +1740,14 @@ function buildAbilityForm(container, ab, s, myIdx){
     btn.onclick = ()=>{
       const ti = parseInt(targetSel.value);
       if(isNaN(ti)) return;
+      const mask = s.p[ti].r;
+      const hiddenCats = [];
+      for(let c=0;c<CATS.length;c++){ if(!((mask>>c)&1)) hiddenCats.push(c); }
+      const picked = shuffle(hiddenCats).slice(0,2);
+      const parts = picked.map(c=>CATS[c]+' = «'+s.p[ti].v[c]+'»').join(', ');
       confirmAndApply(next=>{
-        const mask = next.p[ti].r;
-        const hiddenCats = [];
-        for(let c=0;c<CATS.length;c++){ if(!((mask>>c)&1)) hiddenCats.push(c); }
-        shuffle(hiddenCats).slice(0,2).forEach(c=>{ next.p[ti].r = next.p[ti].r | (1<<c); });
-      });
+        picked.forEach(c=>{ next.p[ti].r = next.p[ti].r | (1<<c); });
+      }, picked.length ? ('🔭🔭 '+s.p[myIdx].n+' раскрыл(а) через «Двойную разведку» у '+s.p[ti].n+': '+parts+'.') : undefined);
     };
     container.appendChild(btn);
 
@@ -1714,7 +1762,7 @@ function buildAbilityForm(container, ab, s, myIdx){
       if(isNaN(ci)) return;
       confirmAndApply(next=>{
         next.p.forEach(pl=>{ if(!pl.e) pl.r = pl.r | (1<<ci); });
-      });
+      }, '📡 '+s.p[myIdx].n+' раскрыл(а) через «Массовую слежку» категорию «'+CATS[ci]+'» у всех живых игроков.');
     };
     container.appendChild(btn);
 
@@ -1914,7 +1962,8 @@ function buildAbilityForm(container, ab, s, myIdx){
     btn.onclick = ()=>{
       const ci = parseInt(catSel.value);
       if(isNaN(ci)) return;
-      confirmAndApply(next=>{ next.p[myIdx].r = next.p[myIdx].r | (1<<ci); });
+      confirmAndApply(next=>{ next.p[myIdx].r = next.p[myIdx].r | (1<<ci); },
+        '💨 '+s.p[myIdx].n+' дополнительно раскрыл(а) через «Второе дыхание»: '+CATS[ci]+' = «'+s.p[myIdx].v[ci]+'».');
     };
     container.appendChild(btn);
   }
@@ -1953,6 +2002,18 @@ function renderGame(s, code){
       twistPanel.appendChild(el('div',{class:'alert-ticker', style:'border-color:var(--neon); color:#bff7ff; margin-bottom:8px;', html:'<b>ТВИСТ:</b> '+tw.text}));
     });
     app.appendChild(twistPanel);
+  }
+
+  if(s.abilityLog && s.abilityLog.text){
+    const logPanel = el('div',{class:'panel fade-in-up', 'data-tag':'Хроника событий'});
+    logPanel.appendChild(el('div',{class:'alert-ticker', style:'border-color:var(--amber); color:var(--paper);', html:s.abilityLog.text}));
+    app.appendChild(logPanel);
+  }
+
+  if(s.lastProposalNote){
+    const notePanel = el('div',{class:'panel fade-in-up', 'data-tag':'Общее решение'});
+    notePanel.appendChild(el('div',{class:'alert-ticker', style:'border-color:var(--muted); color:var(--paper);', text:s.lastProposalNote}));
+    app.appendChild(notePanel);
   }
 
   const turnIdx = currentTurnPlayer(s);
@@ -2027,6 +2088,13 @@ function renderGame(s, code){
       app.appendChild(el('div',{class:'panel fade-in-up', 'data-tag':'Наблюдение', html:'<p class="tiny">Это устройство не привязано ни к одному из выживших, поэтому здесь только наблюдение за распределением обязанностей.</p>'}));
       return;
     }
+
+    const ownPanel = el('div',{class:'panel fade-in-up', 'data-tag':'Твоё досье'});
+    const ownBox = el('div',{style:'background:#171a1f; padding:12px 14px;'});
+    for(let c=0;c<CATS.length;c++) ownBox.appendChild(traitRow(c, s.p[myIdx].v[c], true, false));
+    ownPanel.appendChild(ownBox);
+    app.appendChild(ownPanel);
+
     if(myIdx!==turnIdx){
       const waitPanel = el('div',{class:'panel fade-in-up', 'data-tag':'Действие'});
       waitPanel.appendChild(el('p',{class:'tiny', html:'Сейчас свою обязанность выбирает <b>'+turnName+'</b>. Экран обновится сам, когда очередь дойдёт до тебя.'}));
@@ -2149,6 +2217,33 @@ function renderGame(s, code){
     return;
   }
 
+  if(s.proposal){
+    const label = PROPOSAL_LABELS[s.proposal.type] || 'Предложение';
+    const byName = s.p[s.proposal.by] ? s.p[s.proposal.by].n : '???';
+    const act = activeIdx(s);
+    const agreedCount = act.filter(i=>s.proposal.responses && s.proposal.responses[i]===true).length;
+    actionArea.appendChild(el('p',{html:'<b>'+label+'</b> — предложил(а) '+byName+'. Нужно согласие всех живых игроков ('+agreedCount+' из '+act.length+' уже согласны). Если хоть один откажется, игра продолжится как раньше, без изменений.'}));
+    if(s.proposal.responses && s.proposal.responses[myIdx]===true){
+      actionArea.appendChild(el('p',{class:'tiny', text:'Ты уже согласился(лась) — ждём остальных.'}));
+    } else {
+      const agreeBtn = el('button',{class:'primary', text:'Согласен(на)'});
+      agreeBtn.onclick = ()=>{
+        const next = JSON.parse(JSON.stringify(s));
+        respondToProposal(next, myIdx, true);
+        pushState(next);
+      };
+      const rejectBtn = el('button',{class:'danger', style:'margin-left:10px;', text:'Против'});
+      rejectBtn.onclick = ()=>{
+        const next = JSON.parse(JSON.stringify(s));
+        respondToProposal(next, myIdx, false);
+        pushState(next);
+      };
+      actionArea.appendChild(agreeBtn);
+      actionArea.appendChild(rejectBtn);
+    }
+    return;
+  }
+
   if(myIdx !== turnIdx){
     actionArea.appendChild(el('p',{class:'tiny', html:'Сейчас не твой ход. Ход игрока <b>'+turnName+'</b> — просто подожди, экран обновится сам.'}));
     return;
@@ -2189,22 +2284,17 @@ function renderGame(s, code){
     }
 
     if(s.ph==='reveal' && s.rd >= EARLY_VOTE_FROM_ROUND){
-      actionArea.appendChild(el('div',{class:'tiny', style:'margin-top:10px;', text:'Можно предложить закончить раскрытие раньше срока:'}));
-      const voteEarlyBtn = el('button',{class:'ghost', style:'margin-top:6px;', text:'Начать голосование досрочно'});
+      actionArea.appendChild(el('div',{class:'tiny', style:'margin-top:10px;', text:'Можно предложить закончить раскрытие раньше срока — но для этого нужно согласие всех живых игроков:'}));
+      const voteEarlyBtn = el('button',{class:'ghost', style:'margin-top:6px;', text:'Предложить досрочное голосование'});
       voteEarlyBtn.onclick = ()=>{
         const next = JSON.parse(JSON.stringify(s));
-        switchToVote(next);
+        createProposal(next, 'early_vote', chosen);
+        checkProposalConsensus(next); // на случай, если активен всего один игрок
         pushState(next);
       };
       actionArea.appendChild(voteEarlyBtn);
     }
   } else if(s.ph==='vote'){
-    const activeCount = activeIdx(s).length;
-    const extendCount = s.vt.filter(v=>v===-2).length;
-    const extendNeeded = Math.ceil(activeCount/2);
-    if(extendCount>0){
-      actionArea.appendChild(el('p',{class:'tiny', text:'За продление раскрытия уже высказались: '+extendCount+' из '+extendNeeded+' нужных.'}));
-    }
     actionArea.appendChild(el('label',{text:'За кого голосуешь на исключение?'}));
     const voteSel = el('select');
     voteSel.appendChild(el('option',{value:'', text:'Выберите игрока'}));
@@ -2223,12 +2313,12 @@ function renderGame(s, code){
     };
     actionArea.appendChild(btn);
 
-    actionArea.appendChild(el('div',{class:'tiny', style:'margin-top:12px;', text:'Не уверены, кого исключать? Можно вместо голоса предложить ещё один раунд раскрытия — если так выскажется больше половины ещё голосующих, исключения в этом раунде не будет.'}));
+    actionArea.appendChild(el('div',{class:'tiny', style:'margin-top:12px;', text:'Не уверены, кого исключать? Можно предложить продлить раскрытие вместо голосования — но для этого нужно согласие всех живых игроков.'}));
     const extendBtn = el('button',{class:'ghost', style:'margin-top:6px;', text:'Предложить продлить раскрытие'});
     extendBtn.onclick = ()=>{
       const next = JSON.parse(JSON.stringify(s));
-      next.vt[chosen] = -2;
-      advanceAfterVote(next);
+      createProposal(next, 'extend', chosen);
+      checkProposalConsensus(next);
       pushState(next);
     };
     actionArea.appendChild(extendBtn);
