@@ -301,7 +301,7 @@
   }
   .trait-row:last-child{border-bottom:none;}
   .trait-cat{color:var(--muted); min-width:118px; flex-shrink:0;}
-  .trait-val{color:var(--paper);}
+  .trait-val{color:var(--paper); flex:1 1 auto; min-width:0; word-break:break-word; overflow-wrap:anywhere;}
   .peek-val{color:var(--neon); font-style:italic;}
   .peek-val::after{content:" 👁"; font-size:10px;}
   .redacted{
@@ -310,6 +310,13 @@
     border-radius:2px;
     padding:1px 6px;
     user-select:none;
+    display:inline-block;
+    flex:1 1 auto;
+    min-width:0;
+    max-width:100%;
+    box-sizing:border-box;
+    overflow-wrap:anywhere;
+    word-break:break-word;
   }
   .vote-count{
     font-size:11px;
