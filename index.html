@@ -3060,7 +3060,6 @@ function renderGame(s, code){
       };
       actionArea.appendChild(skipBtn);
     } else {
-      actionArea.appendChild(ownDossierStrip(s, chosen));
       actionArea.appendChild(el('p',{class:'tiny', style:'margin-bottom:2px;', text:'Выбери, какую характеристику раскрыть для всех:'}));
       const grid = el('div',{class:'cat-btn-grid'});
       hidden.forEach(catIdx=>{
