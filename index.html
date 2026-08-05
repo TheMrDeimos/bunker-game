@@ -136,7 +136,7 @@
 
   /* ---------- шапка / марка ---------- */
   header.top{
-    max-width:1180px;
+    max-width:1520px;
     margin:0 auto;
     padding:18px 20px 14px;
     display:flex;
@@ -188,13 +188,13 @@
 
   /* ---------- каркас: две стороны экрана ---------- */
   main{
-    max-width:1180px;
+    max-width:1520px;
     margin:0 auto;
     padding:0 20px;
   }
   .shell{
     display:grid;
-    grid-template-columns:1fr 310px;
+    grid-template-columns:1fr 360px;
     gap:0;
     align-items:start;
   }
@@ -254,18 +254,44 @@
   .rail .panel{border-left-color:var(--line-soft); font-size:12.5px;}
   .rail .panel p{font-size:12px;}
 
-  /* сворачиваемые секции */
+  /* Сворачиваемая секция оформлена нашим же элементом интерфейса:
+     красный ромб-указатель + служебная пунктирная полоса до края. */
   details.panel > summary{
     list-style:none; cursor:pointer; outline:none;
+    display:flex; align-items:center; gap:10px;
     font-family:'Oswald',sans-serif;
-    letter-spacing:1.5px; text-transform:uppercase;
+    letter-spacing:2px; text-transform:uppercase;
     font-size:11.5px; color:var(--muted);
-    padding:2px 0;
+    padding:4px 0;
+    transition:color .15s;
   }
   details > summary::-webkit-details-marker{display:none;}
-  details.panel > summary::before{content:"▸ "; color:var(--amber);}
-  details.panel[open] > summary::before{content:"▾ ";}
+  details.panel > summary::before{
+    content:"";
+    flex:0 0 8px;
+    width:8px; height:8px;
+    background:var(--amber);
+    transform:rotate(45deg);
+    transition:transform .25s ease, box-shadow .2s;
+  }
+  details.panel[open] > summary::before{
+    transform:rotate(45deg) scale(.72);
+    box-shadow:0 0 7px 1px rgba(200,52,42,.85);
+  }
+  details.panel > summary::after{
+    content:"";
+    flex:1 1 auto;
+    height:1px;
+    background:repeating-linear-gradient(90deg, var(--amber-dim) 0 14px, transparent 14px 24px);
+    opacity:.55;
+  }
+  details.panel > summary:hover{color:var(--paper);}
+  details.panel > summary:hover::before{box-shadow:0 0 7px 1px rgba(200,52,42,.7);}
   details.panel[open] > summary{color:var(--paper);}
+  details.panel > summary:focus-visible{outline:1px solid var(--neon); outline-offset:3px;}
+  @media (prefers-reduced-motion: reduce){
+    details.panel > summary::before{transition:none;}
+  }
 
   /* ---------- сводка / тревога ---------- */
   .alert-ticker{
@@ -603,8 +629,8 @@
     min-width:0;
     /* Ключевое для ровных карточек: цензура всегда одной высоты и не переносится,
        иначе длинное скрытое значение растягивает строку и ломает выравнивание. */
-    height:17px;
-    line-height:17px;
+    height:1.45em;
+    line-height:1.45em;
     white-space:nowrap;
     overflow:hidden;
   }
@@ -763,6 +789,51 @@
   }
   .duty-item.taken .duty-head{color:var(--muted);}
   .error-msg{color:#eda9a4; font-size:12px; margin-top:6px;}
+  /* ---------- крупные экраны: интерфейс дышит, а не жмётся мелким кеглем ---------- */
+  @media(min-width:1400px){
+    body{font-size:15px;}
+    h1.brand{font-size:34px;}
+    .subbrand{font-size:11px;}
+    .hazard{height:30px; font-size:10.5px;}
+    .col{padding:24px 34px 0 0;}
+    .rail{padding:24px 0 0 28px;}
+    .panel{padding-left:18px; margin-bottom:28px;}
+    .panel::before{font-size:11.5px; letter-spacing:3px;}
+    .panel p{font-size:14px;}
+    .rail .panel{font-size:13.5px;}
+    .rail .panel p{font-size:13px;}
+    .tiny{font-size:12.5px;}
+    .turn-banner{font-size:16px; padding:15px 18px; margin-bottom:28px;}
+    .phase-pill{font-size:11px; padding:5px 12px;}
+    .roster{grid-template-columns:repeat(auto-fill, minmax(292px,1fr)); gap:15px;}
+    .dossier{padding:16px 17px 18px;}
+    .dossier .pname{font-size:18px;}
+    .trait-row{font-size:13px; min-height:30px;}
+    .trait-cat{font-size:11px; min-width:122px;}
+    .alert-ticker{font-size:13.5px;}
+    .bunker-info{font-size:13px;}
+    .feed-item{font-size:12.5px;}
+    .feed-list{max-height:420px;}
+    button{font-size:13.5px; padding:12px 20px;}
+    .cat-btn-grid{grid-template-columns:repeat(auto-fill, minmax(205px,1fr)); gap:9px;}
+    .cat-btn .bk{font-size:12px;}
+    .cat-btn .bv{font-size:11px;}
+    .own-line{font-size:12px;}
+    .own-line .k{font-size:10px; min-width:100px;}
+    .own-strip-grid{grid-template-columns:repeat(auto-fit, minmax(250px,1fr));}
+    .duty-head{font-size:14px;}
+    .final-item{font-size:15px;}
+    .rules-body{font-size:13.5px;}
+    details.panel > summary{font-size:12.5px;}
+    input[type=text], select{font-size:14.5px; padding:11px 13px;}
+  }
+  @media(min-width:1800px){
+    body{font-size:16px;}
+    .roster{grid-template-columns:repeat(auto-fill, minmax(320px,1fr));}
+    .trait-row{font-size:13.5px;}
+    .trait-cat{min-width:130px;}
+  }
+
   /* экраны без каркаса (ошибка конфига, комната не найдена) */
   main > .panel, main > details{margin-top:24px;}
   @media(max-width:700px){
