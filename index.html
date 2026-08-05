@@ -5,267 +5,451 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
 <title>ПРОТОКОЛ: РАССВЕТ</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&family=Russo+One&display=swap" rel="stylesheet">
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <style>
+  /* ==========================================================================
+     ПРОТОКОЛ РАССВЕТ — визуальный язык
+     Игра про отбор в убежище: личные дела, раскрытие характеристик,
+     голосование на исключение и три ночи после закрытия дверей.
+     Отсюда и оформление: бетон и полумрак укрытия, папки личных дел с алым
+     грифом, неоновая подсветка карточек как индикатор состояния игрока.
+     Никакой жёлто-чёрной "ленты опасности" — это штамп, а не характер.
+     Все шрифты — с обязательной поддержкой кириллицы (это была причина
+     "съехавшей" типографики: у прежнего display-шрифта кириллицы не было).
+     ========================================================================== */
   :root{
-    --bg-0:#111317;
-    --bg-1:#191d23;
-    --bg-2:#20252c;
-    --panel:#1c2129;
-    --line:#343c46;
-    --amber:#e6b325;
-    --amber-dim:#8a6c1f;
-    --rust:#b5451f;
-    --paper:#eee6d3;
-    --muted:#8992a0;
-    --green:#5c9a6b;
-    --neon:#33f0ff;
-    --turn-green:#39d97a;
-    --red-alert:#ff3b3b;
+    /* бетон */
+    --bg-0:#0e0e0d;
+    --bg-1:#151513;
+    --bg-2:#1c1b18;
+    --panel:#151513;
+    --line:#33312a;
+    --line-soft:#26241f;
+    /* гриф дела */
+    --amber:#c8342a;        /* основной алый: грифы, лейблы, акценты (имя переменной историческое) */
+    --amber-dim:#7a221c;
+    --rust:#8c1a1e;
+    /* бумага */
+    --paper:#e8e2d6;
+    --muted:#8a857a;
+    --muted-2:#6a665d;
+    /* служебные */
+    --green:#8a9457;
+    --neon:#63d8d0;         /* холодная подсветка: подсмотренные данные, щит */
+    --turn-green:#b4c06e;
+    --red-alert:#ff2f2f;
+    /* Цвета состояний карточек игроков — перенесены из версии до редизайна:
+       читаются мгновенно и не спорят с бетонной гаммой остального интерфейса. */
+    --card-own:#e6b325;     /* твоя карточка */
+    --card-turn:#39d97a;    /* чей сейчас ход */
+    --card-vote:#33f0ff;    /* тот же игрок, но в фазе голосования */
+    --card-danger:#ff3b3b;  /* больше всех голосов на исключение */
   }
   *{box-sizing:border-box;}
   html,body{margin:0;padding:0;}
   body{
     background:
-      repeating-linear-gradient(0deg, rgba(255,255,255,0.015) 0px, rgba(255,255,255,0.015) 1px, transparent 1px, transparent 3px),
-      radial-gradient(ellipse at top, var(--bg-1), var(--bg-0) 70%);
+      repeating-linear-gradient(0deg, rgba(255,255,255,0.018) 0px, rgba(255,255,255,0.018) 1px, transparent 1px, transparent 3px),
+      linear-gradient(180deg, var(--bg-1), var(--bg-0) 60%);
     color:var(--paper);
     font-family:'IBM Plex Mono', monospace;
+    font-size:14px;
     min-height:100vh;
-    padding:0 0 60px 0;
+    padding:0 0 50px 0;
     position:relative;
     overflow-x:hidden;
   }
 
-  /* ---------- VFX canvas + CRT ---------- */
+  /* ---------- фоновые слои ---------- */
   #vfxCanvas{
     position:fixed; inset:0; width:100%; height:100%;
-    z-index:0; pointer-events:none; opacity:.55; mix-blend-mode:screen;
+    z-index:0; pointer-events:none; opacity:.4; mix-blend-mode:screen;
   }
   .scanline-sweep{
-    position:fixed; left:0; right:0; height:120px; top:-120px;
-    background:linear-gradient(180deg, transparent, rgba(230,179,37,0.06), transparent);
+    position:fixed; left:0; right:0; height:140px; top:-140px;
+    background:linear-gradient(180deg, transparent, rgba(99,216,208,0.035), transparent);
     pointer-events:none; z-index:1;
-    animation:sweep 7s linear infinite;
+    animation:sweep 9s linear infinite;
   }
-  @keyframes sweep{0%{top:-120px;} 100%{top:100%;}}
+  @keyframes sweep{0%{top:-140px;} 100%{top:100%;}}
   header.top, main, footer{position:relative; z-index:2;}
 
   .vote-alert-frame{
     position:fixed; inset:0; pointer-events:none; z-index:3;
     box-shadow: inset 0 0 0px 0px var(--red-alert);
-    animation:none;
   }
   body.vote-mode .vote-alert-frame{
-    animation: voteFramePulse 1.6s ease-in-out infinite;
+    animation: voteFramePulse 2s ease-in-out infinite;
   }
   @keyframes voteFramePulse{
-    0%,100%{ box-shadow: inset 0 0 40px 4px rgba(255,59,59,0.15); }
-    50%{ box-shadow: inset 0 0 90px 14px rgba(255,59,59,0.4); }
+    0%,100%{ box-shadow: inset 0 0 50px 3px rgba(255,47,47,0.10); }
+    50%{ box-shadow: inset 0 0 110px 12px rgba(255,47,47,0.28); }
   }
 
   @keyframes fadeInUp{
-    from{opacity:0; transform:translateY(14px);}
+    from{opacity:0; transform:translateY(8px);}
     to{opacity:1; transform:translateY(0);}
   }
-  .fade-in-up{animation:fadeInUp .45s ease both;}
-
-  @keyframes cardShake{
-    0%,100%{transform:translate(0,0) rotate(0);}
-    20%{transform:translate(-1px,0) rotate(-.2deg);}
-    40%{transform:translate(1px,0) rotate(.2deg);}
-    60%{transform:translate(-1px,1px) rotate(-.15deg);}
-    80%{transform:translate(1px,-1px) rotate(.15deg);}
-  }
-  body.vote-mode .dossier:not(.out){animation:cardShake 3.2s ease-in-out infinite;}
+  .fade-in-up{animation:fadeInUp .35s ease both;}
 
   @keyframes revealFlash{
-    0%{ background:rgba(230,179,37,0.55); color:#171a1f; transform:scaleY(0.2); }
-    40%{ background:rgba(230,179,37,0.35); transform:scaleY(1.05); }
-    100%{ background:transparent; transform:scaleY(1); }
+    0%{ background:rgba(200,52,42,0.5); transform:translateX(-4px); }
+    100%{ background:transparent; transform:translateX(0); }
   }
-  .reveal-flash{ animation:revealFlash .7s ease both; border-radius:2px; }
+  .reveal-flash{ animation:revealFlash .8s ease both; }
 
   @media (prefers-reduced-motion: reduce){
-    .fade-in-up, .reveal-flash, body.vote-mode .dossier, .scanline-sweep, body.vote-mode .vote-alert-frame{animation:none !important;}
+    .fade-in-up, .reveal-flash, .scanline-sweep, body.vote-mode .vote-alert-frame{animation:none !important;}
   }
 
+  /* ---------- служебная полоса над шапкой (вместо ленты опасности) ---------- */
   .hazard{
-    height:8px;
+    height:26px;
     width:100%;
-    background:repeating-linear-gradient(135deg, var(--amber), var(--amber) 14px, #111 14px, #111 28px);
-    position:relative; z-index:2;
+    background:var(--bg-0);
+    border-bottom:1px solid var(--line);
+    position:relative; z-index:4;
+    display:flex; align-items:center; gap:14px;
+    padding:0 16px;
+    overflow:hidden;
+    font-family:'Oswald',sans-serif;
+    font-size:9.5px; letter-spacing:3px; text-transform:uppercase;
+    color:var(--muted-2);
+    white-space:nowrap;
   }
-  header.top{
-    padding:22px 20px 14px;
-    max-width:900px;
-    margin:0 auto;
-    text-align:center;
-  }
-  h1.brand{
-    font-family:'Oswald', sans-serif;
-    font-weight:700;
+  .hazard::before{
+    content:"◆ ◆ ◆";
+    color:var(--amber);
     letter-spacing:6px;
-    font-size:clamp(28px,6vw,44px);
-    margin:10px 0 4px;
-    color:var(--paper);
+    font-size:8px;
   }
-  h1.brand span{color:var(--amber);}
-  .subbrand{
-    font-size:12px;
-    letter-spacing:3px;
-    color:var(--muted);
+  .hazard::after{
+    content:"";
+    flex:1;
+    height:1px;
+    background:repeating-linear-gradient(90deg, var(--amber-dim) 0 18px, transparent 18px 30px);
+  }
+  body.vote-mode .hazard::before{color:var(--red-alert);}
+
+  /* ---------- шапка / марка ---------- */
+  header.top{
+    max-width:1180px;
+    margin:0 auto;
+    padding:18px 20px 14px;
+    display:flex;
+    align-items:flex-end;
+    justify-content:space-between;
+    gap:18px;
+    border-bottom:1px solid var(--line);
+  }
+  .mark{display:flex; align-items:center; gap:14px; min-width:0;}
+  .mark-glyph{
+    width:38px; height:38px; flex:0 0 38px;
+    border:2px solid var(--amber);
+    display:flex; align-items:center; justify-content:center;
+    transform:rotate(45deg);
+    position:relative;
+  }
+  .mark-glyph i{
+    width:10px; height:10px; background:var(--amber); display:block;
+  }
+  body.vote-mode .mark-glyph{border-color:var(--red-alert);}
+  body.vote-mode .mark-glyph i{background:var(--red-alert);}
+  h1.brand{
+    font-family:'Russo One', 'Oswald', sans-serif;
+    font-weight:400;
+    letter-spacing:1px;
+    font-size:clamp(19px,3.4vw,29px);
+    margin:0;
+    color:var(--paper);
+    line-height:1;
     text-transform:uppercase;
   }
-  main{
-    max-width:900px;
-    margin:0 auto;
-    padding:10px 16px 0;
+  h1.brand span{
+    display:block;
+    color:var(--amber);
+    font-size:.52em;
+    letter-spacing:5px;
+    margin-top:5px;
   }
+  .subbrand{
+    font-family:'Oswald',sans-serif;
+    font-size:10px;
+    letter-spacing:2.5px;
+    color:var(--muted-2);
+    text-transform:uppercase;
+    text-align:right;
+    line-height:1.7;
+  }
+  .subbrand b{color:var(--muted); font-weight:500;}
+
+  /* ---------- каркас: две стороны экрана ---------- */
+  main{
+    max-width:1180px;
+    margin:0 auto;
+    padding:0 20px;
+  }
+  .shell{
+    display:grid;
+    grid-template-columns:1fr 310px;
+    gap:0;
+    align-items:start;
+  }
+  .col{
+    min-width:0;
+    padding:18px 26px 0 0;
+  }
+  .rail{
+    min-width:0;
+    padding:18px 0 0 22px;
+    border-left:1px solid var(--line);
+    position:sticky;
+    top:0;
+    max-height:100vh;
+    overflow-y:auto;
+    scrollbar-width:thin;
+  }
+  .rail::-webkit-scrollbar{width:5px;}
+  .rail::-webkit-scrollbar-thumb{background:var(--line);}
+  @media(max-width:900px){
+    .shell{grid-template-columns:1fr;}
+    .col{padding:14px 0 0; order:1;}
+    .rail{
+      padding:14px 0 0;
+      border-left:none;
+      border-top:1px solid var(--line);
+      position:static;
+      max-height:none;
+      order:2;
+      margin-top:20px;
+    }
+  }
+
+  /* ---------- секции (НЕ карточки — карточки только у игроков) ---------- */
   .panel{
-    background:var(--panel);
-    border:1px solid var(--line);
-    border-radius:2px;
-    padding:20px;
-    margin-bottom:18px;
+    background:transparent;
+    border:none;
+    border-left:2px solid var(--line);
+    border-radius:0;
+    padding:2px 0 0 14px;
+    margin:0 0 22px 0;
     position:relative;
   }
   .panel::before{
     content:attr(data-tag);
-    position:absolute;
-    top:-10px;
-    left:16px;
-    background:var(--bg-0);
-    padding:0 8px;
-    font-size:11px;
-    letter-spacing:2px;
+    display:block;
+    font-family:'Oswald',sans-serif;
+    font-weight:500;
+    font-size:10px;
+    letter-spacing:2.5px;
     color:var(--amber);
     text-transform:uppercase;
+    margin-bottom:9px;
   }
+  .panel p{margin:0 0 9px; line-height:1.65; font-size:13px;}
+  .panel p:last-child{margin-bottom:0;}
+  .rail .panel{border-left-color:var(--line-soft); font-size:12.5px;}
+  .rail .panel p{font-size:12px;}
+
+  /* сворачиваемые секции */
+  details.panel > summary{
+    list-style:none; cursor:pointer; outline:none;
+    font-family:'Oswald',sans-serif;
+    letter-spacing:1.5px; text-transform:uppercase;
+    font-size:11.5px; color:var(--muted);
+    padding:2px 0;
+  }
+  details > summary::-webkit-details-marker{display:none;}
+  details.panel > summary::before{content:"▸ "; color:var(--amber);}
+  details.panel[open] > summary::before{content:"▾ ";}
+  details.panel[open] > summary{color:var(--paper);}
+
+  /* ---------- сводка / тревога ---------- */
   .alert-ticker{
-    background:#171a1f;
-    border:1px solid var(--rust);
-    color:#e8a08c;
-    padding:12px 16px;
-    font-size:13px;
-    line-height:1.6;
-    border-radius:2px;
-  }
-  .alert-ticker b{color:var(--amber);}
-  .feed-list{display:flex; flex-direction:column; gap:6px;}
-  .feed-item{
-    background:#171a1f;
-    border-left:3px solid var(--line);
-    padding:8px 12px;
-    font-size:12.5px;
-    line-height:1.5;
-    border-radius:2px;
+    background:linear-gradient(90deg, rgba(200,52,42,0.09), transparent 70%);
+    border:none;
+    border-left:2px solid var(--rust);
     color:var(--paper);
+    padding:9px 0 9px 12px;
+    margin-left:-14px;
+    padding-left:12px;
+    font-size:12.5px;
+    line-height:1.65;
+    border-radius:0;
   }
-  .feed-item.kind-ability{border-left-color:var(--amber); background:rgba(230,179,37,0.08);}
-  .feed-item.kind-vote{border-left-color:var(--rust);}
-  .feed-item.kind-reveal{border-left-color:var(--turn-green);}
-  .feed-item.kind-system{border-left-color:var(--muted); color:var(--muted);}
+  .alert-ticker b{
+    color:var(--amber);
+    font-family:'Oswald',sans-serif;
+    letter-spacing:1.5px;
+  }
   .bunker-info{
-    font-size:13px;
+    font-size:12px;
     color:var(--muted);
-    margin-top:10px;
-    line-height:1.6;
+    margin-top:9px;
+    line-height:1.7;
+    padding-top:9px;
+    border-top:1px solid var(--line-soft);
   }
+
+  /* ---------- хроника ---------- */
+  .feed-list{
+    display:flex;
+    flex-direction:column;
+    max-height:340px;
+    overflow-y:auto;
+    scrollbar-width:thin;
+    padding-right:4px;
+  }
+  .feed-list::-webkit-scrollbar{width:4px;}
+  .feed-list::-webkit-scrollbar-thumb{background:var(--line);}
+  .feed-item{
+    background:transparent;
+    border:none;
+    border-left:2px solid var(--line);
+    padding:6px 0 6px 10px;
+    margin-bottom:4px;
+    font-size:11.5px;
+    line-height:1.55;
+    border-radius:0;
+    color:var(--muted);
+  }
+  .feed-item.kind-ability{border-left-color:var(--amber); color:var(--paper);}
+  .feed-item.kind-vote{border-left-color:var(--rust); color:var(--paper);}
+  .feed-item.kind-reveal{border-left-color:var(--turn-green);}
+  .feed-item.kind-system{border-left-color:var(--line);}
+
+  /* ---------- формы ---------- */
   label{
     display:block;
-    font-size:11px;
-    letter-spacing:1.5px;
+    font-family:'Oswald',sans-serif;
+    font-size:10px;
+    letter-spacing:2px;
     text-transform:uppercase;
-    color:var(--muted);
-    margin-bottom:6px;
+    color:var(--muted-2);
+    margin-bottom:5px;
   }
-  input[type=text]{
+  input[type=text], select{
     width:100%;
     background:var(--bg-0);
     border:1px solid var(--line);
     color:var(--paper);
-    padding:11px 12px;
+    padding:10px 12px;
     font-family:'IBM Plex Mono', monospace;
-    font-size:14px;
-    border-radius:2px;
-    margin-bottom:14px;
+    font-size:13.5px;
+    border-radius:0;
+    margin-bottom:12px;
   }
-  input[type=text]:focus{outline:none; border-color:var(--amber);}
+  input[type=text]:focus, select:focus{outline:none; border-color:var(--amber);}
   .grid6{
     display:grid;
     grid-template-columns:1fr 1fr;
-    gap:0 16px;
+    gap:0 18px;
   }
-  @media(max-width:520px){.grid6{grid-template-columns:1fr;}}
+  @media(max-width:640px){.grid6{grid-template-columns:1fr;}}
+
+  /* ---------- кнопки ---------- */
   button{
     font-family:'Oswald', sans-serif;
-    font-weight:600;
+    font-weight:500;
     letter-spacing:2px;
     text-transform:uppercase;
-    font-size:14px;
-    padding:13px 20px;
-    border-radius:2px;
+    font-size:12.5px;
+    padding:11px 18px;
+    border-radius:0;
     border:1px solid var(--amber);
     background:transparent;
     color:var(--amber);
     cursor:pointer;
-    transition:background .15s, color .15s;
+    transition:background .12s, color .12s;
   }
-  button:hover{background:var(--amber); color:#171a1f;}
-  button.primary{background:var(--amber); color:#171a1f;}
-  button.primary:hover{background:#f3c545;}
-  button.danger{border-color:var(--rust); color:#e8a08c;}
+  button:hover{background:var(--amber); color:var(--bg-0);}
+  button:focus-visible{outline:2px solid var(--neon); outline-offset:2px;}
+  button.primary{background:var(--amber); color:var(--bg-0); border-color:var(--amber);}
+  button.primary:hover{background:#dc4235; border-color:#dc4235;}
+  button.danger{border-color:var(--rust); color:#eda9a4;}
   button.danger:hover{background:var(--rust); color:#fff;}
-  button.ghost{border-color:var(--muted); color:var(--muted);}
-  button.ghost:hover{background:var(--muted); color:#171a1f;}
-  button:disabled{opacity:.35; cursor:not-allowed;}
+  button.ghost{border-color:var(--line); color:var(--muted);}
+  button.ghost:hover{background:var(--line); color:var(--paper);}
+  button:disabled{opacity:.3; cursor:not-allowed;}
   button:disabled:hover{background:transparent; color:var(--amber);}
   .row{display:flex; gap:10px; flex-wrap:wrap; align-items:center;}
-  .cat-btn-grid{display:flex; flex-wrap:wrap; gap:8px; margin:12px 0;}
-  .cat-btn-grid button{font-size:12px; padding:10px 14px;}
+  .cat-btn-grid{
+    display:grid;
+    grid-template-columns:repeat(auto-fill, minmax(178px,1fr));
+    gap:7px;
+    margin:12px 0;
+  }
+  .cat-btn-grid button{font-size:11.5px; padding:11px 10px; letter-spacing:1.2px;}
+  /* кнопка раскрытия несёт и название категории, и само значение */
+  .cat-btn-grid button.cat-btn{
+    display:flex; flex-direction:column; align-items:flex-start; gap:3px;
+    text-align:left; padding:9px 11px;
+  }
+  .cat-btn .bk{
+    font-family:'Oswald',sans-serif;
+    font-size:11px; letter-spacing:1.5px; text-transform:uppercase;
+  }
+  .cat-btn .bv{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:10px; letter-spacing:0; text-transform:none;
+    color:var(--muted);
+    max-width:100%;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+  .cat-btn:hover .bv{color:rgba(16,15,13,.72);}
+
+  /* ---------- баннер хода ---------- */
   .turn-banner{
     display:flex;
     align-items:center;
     justify-content:space-between;
-    gap:10px;
-    background:linear-gradient(90deg, rgba(230,179,37,0.13), transparent);
+    gap:12px;
+    background:var(--bg-0);
+    border:1px solid var(--line);
     border-left:3px solid var(--amber);
-    padding:14px 16px;
-    margin-bottom:18px;
+    padding:12px 14px;
+    margin-bottom:22px;
     font-family:'Oswald', sans-serif;
-    letter-spacing:1px;
+    letter-spacing:1.5px;
+    font-size:14px;
+    position:sticky;
+    top:0;
+    z-index:6;
   }
+  .turn-banner b{color:var(--paper);}
   body.vote-mode .turn-banner{
     border-left-color:var(--red-alert);
-    background:linear-gradient(90deg, rgba(255,59,59,0.14), transparent);
+    border-color:var(--amber-dim);
   }
-  .turn-banner .cursor{animation:blink 1s steps(1) infinite;}
+  .turn-banner .cursor{animation:blink 1.1s steps(1) infinite; color:var(--amber);}
   @keyframes blink{50%{opacity:0;}}
   @media (prefers-reduced-motion: reduce){.turn-banner .cursor{animation:none;}}
   .phase-pill{
-    font-size:11px;
-    letter-spacing:1.5px;
+    font-family:'Oswald',sans-serif;
+    font-size:10px;
+    letter-spacing:2px;
     text-transform:uppercase;
-    color:#171a1f;
+    color:var(--bg-0);
     background:var(--amber);
-    padding:3px 10px;
-    border-radius:20px;
+    padding:4px 10px;
+    border-radius:0;
     white-space:nowrap;
   }
   body.vote-mode .phase-pill{background:var(--red-alert); color:#fff;}
+
+  /* ---------- КАРТОЧКИ ИГРОКОВ (единственные карточки в интерфейсе) ---------- */
   .roster{
     display:grid;
-    grid-template-columns:repeat(auto-fill, minmax(260px,1fr));
-    gap:14px;
+    grid-template-columns:repeat(auto-fill, minmax(244px,1fr));
+    gap:12px;
   }
   .dossier{
     background:var(--bg-0);
     border:1px solid var(--line);
-    border-radius:2px;
+    border-radius:0;
     padding:14px 14px 16px;
     position:relative;
     overflow:hidden;
@@ -282,183 +466,325 @@
     background:var(--rust);
     color:#fff;
     font-family:'Oswald',sans-serif;
+    font-weight:600;
     letter-spacing:3px;
     font-size:12px;
     padding:4px 0;
-    box-shadow:0 2px 6px rgba(0,0,0,.4);
+    box-shadow:0 2px 6px rgba(0,0,0,.45);
   }
-  .dossier.active-turn{border-color:var(--turn-green); box-shadow:0 0 10px 1px rgba(57,217,122,0.55), 0 0 0 1px var(--turn-green) inset;}
+  /* Ходит сейчас — зелёная неоновая рамка */
+  .dossier.active-turn{
+    border-color:var(--card-turn);
+    box-shadow:0 0 10px 1px rgba(57,217,122,0.55), 0 0 0 1px var(--card-turn) inset;
+  }
+  /* Тот же игрок в фазе голосования — холодный бирюзовый неон */
   body.vote-mode .dossier.active-turn{
-    border-color:var(--neon);
-    box-shadow:0 0 12px 1px var(--neon), 0 0 0 1px var(--neon) inset;
+    border-color:var(--card-vote);
+    box-shadow:0 0 12px 1px var(--card-vote), 0 0 0 1px var(--card-vote) inset;
   }
+  /* Твоя карточка — золотой неон */
+  .dossier.own-card{
+    border:1px solid var(--card-own);
+    background:#1a1710;
+    box-shadow:0 0 12px 2px rgba(230,179,37,0.5), 0 0 0 1px var(--card-own) inset;
+  }
+  /* Больше всех голосов на исключение — красный неон, перебивает остальное */
   .dossier.vote-leader{
-    border-color:var(--red-alert) !important;
-    box-shadow:0 0 16px 3px rgba(255,59,59,0.65), 0 0 0 1px var(--red-alert) inset !important;
+    border-color:var(--card-danger) !important;
+    box-shadow:0 0 16px 3px rgba(255,59,59,0.65), 0 0 0 1px var(--card-danger) inset !important;
   }
   .dossier .pname{
     font-family:'Oswald', sans-serif;
-    font-size:17px;
+    font-size:16px;
     letter-spacing:1px;
+    text-transform:uppercase;
     margin-bottom:10px;
     display:flex;
     justify-content:space-between;
     align-items:center;
+    gap:8px;
   }
+  .dossier.own-card .pname{color:var(--card-own);}
+  .dossier.active-turn .pname{color:var(--card-turn);}
+  body.vote-mode .dossier.active-turn .pname{color:var(--card-vote);}
   .trait-row{
     display:flex;
     gap:8px;
-    align-items:baseline;
-    font-size:12.5px;
+    align-items:center;
+    min-height:27px;
+    font-size:12px;
     padding:4px 0;
-    border-bottom:1px dashed #2a303a;
+    border-bottom:1px dashed var(--line-soft);
   }
   .trait-row:last-child{border-bottom:none;}
-  .trait-cat{color:var(--muted); min-width:118px; flex-shrink:0;}
+  .trait-cat{
+    color:var(--muted-2);
+    min-width:104px;
+    flex-shrink:0;
+    font-size:10.5px;
+    letter-spacing:.5px;
+    text-transform:uppercase;
+    line-height:1.3;
+  }
   .trait-val{color:var(--paper); flex:1 1 auto; min-width:0; word-break:break-word; overflow-wrap:anywhere;}
   .peek-val{color:var(--neon); font-style:italic;}
-  .peek-val::after{content:" 👁"; font-size:10px;}
+  .peek-val::after{content:" ◈"; font-size:9px;}
+
+  /* ---------- компактная сводка своих данных над кнопками раскрытия ---------- */
+  .own-strip{
+    border:1px solid var(--line);
+    border-left:2px solid var(--card-own);
+    background:#191510;
+    padding:9px 12px 7px;
+    margin:0 0 14px;
+  }
+  .own-strip-head{
+    display:flex; align-items:center; gap:10px;
+    margin-bottom:7px;
+  }
+  .own-strip-title{
+    font-family:'Oswald',sans-serif;
+    font-size:10px; letter-spacing:2px; text-transform:uppercase;
+    color:var(--card-own); white-space:nowrap;
+  }
+  .own-strip-count{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:10px; color:var(--muted-2); white-space:nowrap;
+  }
+  .own-meter-bar{
+    flex:1; height:2px; background:var(--line-soft); position:relative; overflow:hidden; min-width:40px;
+  }
+  .own-meter-bar i{
+    display:block; height:100%; background:var(--card-own);
+    box-shadow:0 0 6px rgba(230,179,37,.7);
+    transition:width .4s ease;
+  }
+  .own-strip-grid{
+    display:grid;
+    grid-template-columns:repeat(auto-fit, minmax(215px,1fr));
+    gap:0 18px;
+  }
+  .own-line{
+    display:flex; gap:8px; align-items:baseline;
+    padding:3px 0;
+    border-bottom:1px solid var(--line-soft);
+    font-size:11px;
+    min-width:0;
+  }
+  .own-line .k{
+    font-family:'Oswald',sans-serif;
+    font-size:9px; letter-spacing:1px; text-transform:uppercase;
+    color:#57534b; min-width:88px; flex-shrink:0;
+  }
+  .own-line .v{
+    flex:1 1 auto; min-width:0;
+    color:#7d786d; font-style:italic;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+  /* уже раскрытое — ярче и без курсива, с горящей меткой */
+  .own-line.open .k{color:var(--muted);}
+  .own-line.open .v{color:var(--paper); font-style:normal;}
+  .own-line.open .k::before{
+    content:"●"; color:var(--card-own); font-size:7px;
+    margin-right:5px; vertical-align:middle;
+  }
+  .own-line:not(.open) .k::before{
+    content:"○"; color:#4a463f; font-size:7px;
+    margin-right:5px; vertical-align:middle;
+  }
   .redacted{
-    background:repeating-linear-gradient(135deg,#000,#000 4px,#151515 4px,#151515 8px);
+    background:#000;
     color:transparent;
-    border-radius:2px;
-    padding:1px 6px;
+    border-radius:0;
+    padding:0 6px;
     user-select:none;
-    display:inline-block;
+    display:block;
     flex:1 1 auto;
     min-width:0;
-    max-width:100%;
-    box-sizing:border-box;
-    overflow-wrap:anywhere;
-    word-break:break-word;
+    /* Ключевое для ровных карточек: цензура всегда одной высоты и не переносится,
+       иначе длинное скрытое значение растягивает строку и ломает выравнивание. */
+    height:17px;
+    line-height:17px;
+    white-space:nowrap;
+    overflow:hidden;
   }
   .vote-count{
-    font-size:11px;
-    color:var(--amber);
+    font-family:'Oswald',sans-serif;
+    font-size:10.5px;
+    letter-spacing:1px;
+    color:var(--card-own);
+    white-space:nowrap;
   }
-  body.vote-mode .vote-count{color:var(--red-alert);}
-  .own-card{
-    border:1px solid var(--amber);
-    background:#1a1710;
-    box-shadow:0 0 12px 2px rgba(230,179,37,0.5), 0 0 0 1px var(--amber) inset;
-  }
+  body.vote-mode .vote-count{color:var(--card-danger);}
+
+  /* ---------- прочее ---------- */
   .stamp{
     display:inline-block;
     border:2px solid var(--rust);
-    color:#e8a08c;
+    color:#eda9a4;
     font-family:'Oswald',sans-serif;
+    font-weight:600;
     letter-spacing:3px;
-    padding:3px 10px;
-    transform:rotate(-4deg);
+    padding:3px 11px;
+    transform:rotate(-2.5deg);
     font-size:11px;
-    margin-bottom:10px;
-    border-radius:3px;
-  }
-  select{
-    width:100%;
-    background:var(--bg-0);
-    border:1px solid var(--line);
-    color:var(--paper);
-    padding:11px 12px;
-    font-family:'IBM Plex Mono', monospace;
-    font-size:14px;
-    border-radius:2px;
-    margin-bottom:14px;
+    margin-bottom:12px;
+    border-radius:0;
+    text-transform:uppercase;
   }
   .linkbox{
     background:var(--bg-0);
     border:1px solid var(--line);
-    padding:10px 12px;
-    font-size:11.5px;
+    padding:8px 10px;
+    font-size:10.5px;
     word-break:break-all;
     color:var(--muted);
-    border-radius:2px;
-    margin:10px 0;
-    max-height:70px;
+    border-radius:0;
+    margin:8px 0;
+    max-height:64px;
     overflow-y:auto;
   }
-  .copied-msg{color:var(--green); font-size:12px; margin-left:8px;}
+  .copied-msg{color:var(--green); font-size:11px; margin-left:8px;}
   details{margin-bottom:18px;}
   summary{
     cursor:pointer;
     font-family:'Oswald',sans-serif;
     letter-spacing:1.5px;
     text-transform:uppercase;
-    font-size:13px;
+    font-size:12px;
     color:var(--muted);
   }
   details[open] summary{color:var(--amber);}
-  .rules-body{font-size:13px; line-height:1.7; color:var(--muted); padding-top:10px;}
+  .rules-body{font-size:12.5px; line-height:1.75; color:var(--muted); padding-top:10px;}
   .rules-body b{color:var(--paper);}
-  .final-list{
-    display:flex;
-    flex-direction:column;
-    gap:10px;
-  }
+  .final-list{display:flex; flex-direction:column; gap:7px;}
   .final-item{
-    background:var(--bg-0);
-    border:1px solid var(--green);
-    padding:12px 14px;
-    border-radius:2px;
-    font-family:'Oswald',sans-serif;
-    letter-spacing:1px;
-    font-size:16px;
-  }
-  .tiny{font-size:11px; color:var(--muted);}
-  footer{
-    text-align:center;
-    color:#4a5260;
-    font-size:11px;
-    padding:30px 20px 10px;
-  }
-  .tabs{display:flex; gap:0; margin-bottom:16px; border-bottom:1px solid var(--line);}
-  .tab{
-    padding:10px 18px;
+    background:var(--bg-2);
+    border:1px solid var(--line);
+    border-left:3px solid var(--green);
+    padding:10px 13px;
+    border-radius:0;
     font-family:'Oswald',sans-serif;
     letter-spacing:1.5px;
     text-transform:uppercase;
-    font-size:13px;
-    color:var(--muted);
+    font-size:14px;
+  }
+  .tiny{font-size:11px; color:var(--muted); line-height:1.6;}
+  footer{
+    text-align:center;
+    color:var(--muted-2);
+    font-family:'Oswald',sans-serif;
+    font-size:9.5px;
+    letter-spacing:2.5px;
+    text-transform:uppercase;
+    padding:26px 20px 10px;
+    opacity:.6;
+  }
+  .tabs{display:flex; gap:0; margin-bottom:18px; border-bottom:1px solid var(--line);}
+  .tab{
+    padding:9px 16px;
+    font-family:'Oswald',sans-serif;
+    letter-spacing:1.5px;
+    text-transform:uppercase;
+    font-size:12px;
+    color:var(--muted-2);
     cursor:pointer;
     border-bottom:2px solid transparent;
     margin-bottom:-1px;
   }
+  .tab:hover{color:var(--muted);}
   .tab.active{color:var(--amber); border-bottom-color:var(--amber);}
   .room-badge{
     display:inline-flex;
     align-items:center;
     gap:8px;
-    background:var(--bg-0);
+    background:transparent;
     border:1px solid var(--amber-dim);
-    padding:5px 12px;
-    border-radius:20px;
-    font-size:12px;
-    letter-spacing:1px;
+    padding:5px 11px;
+    border-radius:0;
+    font-family:'Oswald',sans-serif;
+    font-size:11px;
+    letter-spacing:2px;
     color:var(--amber);
-    margin-top:8px;
   }
   .dot-live{
-    width:7px; height:7px; border-radius:50%;
+    width:6px; height:6px; border-radius:50%;
     background:var(--green);
     box-shadow:0 0 6px var(--green);
   }
   .code-display{
-    font-family:'Oswald',sans-serif;
-    font-size:34px;
-    letter-spacing:8px;
+    font-family:'Russo One','Oswald',sans-serif;
+    font-size:38px;
+    letter-spacing:12px;
     color:var(--amber);
     text-align:center;
-    padding:14px 0;
+    padding:16px 0 10px;
+    text-indent:12px;
   }
-  .error-msg{color:#e8a08c; font-size:13px; margin-top:6px;}
-  .config-warning{
-    background:#241a12;
-    border:1px solid var(--rust);
-    color:#f0c4a0;
-    padding:16px;
+  .claim-row{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    gap:12px;
+    padding:9px 0;
+    border-top:1px solid var(--line-soft);
+  }
+  .claim-row:last-of-type{border-bottom:1px solid var(--line-soft);}
+  .claim-name{
+    font-family:'Oswald',sans-serif;
+    letter-spacing:1.2px;
+    text-transform:uppercase;
+    font-size:13.5px;
+  }
+  .verdict-head{
+    font-family:'Russo One','Oswald',sans-serif;
+    font-size:clamp(22px,4vw,32px);
+    letter-spacing:2px;
+    text-transform:uppercase;
+    color:var(--paper);
+    line-height:1.1;
+    margin-bottom:10px;
+  }
+  .duty-list{display:flex; flex-direction:column; margin-top:4px;}
+  .duty-item{
+    border-top:1px solid var(--line-soft);
+    padding:9px 0;
+  }
+  .duty-item:last-child{border-bottom:1px solid var(--line-soft);}
+  .duty-item.taken{opacity:.45;}
+  .duty-head{
+    display:flex; justify-content:space-between; align-items:baseline; gap:10px;
+    font-family:'Oswald',sans-serif;
+    letter-spacing:1.2px;
+    text-transform:uppercase;
     font-size:13px;
+    color:var(--paper);
+    margin-bottom:3px;
+  }
+  .duty-item.taken .duty-head{color:var(--muted);}
+  .error-msg{color:#eda9a4; font-size:12px; margin-top:6px;}
+  /* экраны без каркаса (ошибка конфига, комната не найдена) */
+  main > .panel, main > details{margin-top:24px;}
+  @media(max-width:700px){
+    header.top{
+      flex-direction:column;
+      align-items:flex-start;
+      gap:12px;
+      padding:14px 16px 12px;
+    }
+    .subbrand{text-align:left;}
+    main{padding:0 16px;}
+    .hazard{font-size:8.5px; letter-spacing:2px;}
+  }
+  .config-warning{
+    background:transparent;
+    border:1px solid var(--rust);
+    border-left:3px solid var(--rust);
+    color:#eec8c0;
+    padding:14px;
+    font-size:12.5px;
     line-height:1.7;
-    border-radius:2px;
+    border-radius:0;
   }
 </style>
 </head>
@@ -466,16 +792,21 @@
 <canvas id="vfxCanvas"></canvas>
 <div class="scanline-sweep"></div>
 <div class="vote-alert-frame"></div>
-<div class="hazard"></div>
+<div class="hazard">Протокол Рассвет · мест в убежище меньше, чем претендентов</div>
 <header class="top">
-  <div class="subbrand">Координация выживших · до рассвета осталось недолго</div>
-  <h1 class="brand">ПРОТОКОЛ<span>::</span>РАССВЕТ</h1>
-  <div class="subbrand" id="statusLine">инициализация…</div>
+  <div class="mark">
+    <div class="mark-glyph"><i></i></div>
+    <h1 class="brand">Протокол<span>Рассвет</span></h1>
+  </div>
+  <div class="subbrand">
+    <div>Раскрой <b>9</b> характеристик · переживи <b>3</b> ночи</div>
+    <div id="statusLine">инициализация…</div>
+  </div>
 </header>
 
 <main id="app"></main>
 
-<footer>живая синхронизация · Firebase Realtime Database · без своего сервера</footer>
+<footer>Живая синхронизация · Firebase Realtime Database · без своего сервера</footer>
 
 <script>
 /* ======================================================================
@@ -651,7 +982,12 @@ const SHELTER_TYPES = [
   { name:"Старый маяк", blurb:"маяк на скалистом берегу с примыкающим домиком смотрителя" },
   { name:"Промышленный склад", blurb:"складской комплекс с толстыми бетонными стенами" },
   { name:"Заброшенный супермаркет", blurb:"торговый центр с забаррикадированными входами" },
-  { name:"Церковь на холме", blurb:"старая церковь с крепким каменным подвалом" }
+  { name:"Церковь на холме", blurb:"старая церковь с крепким каменным подвалом" },
+  { name:"Секретный научный комплекс", blurb:"засекреченная исследовательская станция с автономными системами жизнеобеспечения" },
+  { name:"Заброшенное метро", blurb:"участок подземки между двумя обрушенными тоннелями, отрезанный от города" },
+  { name:"Горнолыжная база", blurb:"турбаза у подножья гор с крепкими срубами и запасом дров" },
+  { name:"Списанный корабль на мели", blurb:"выброшенное на берег грузовое судно с уцелевшими трюмами и каютами" },
+  { name:"Тюрьма строгого режима", blurb:"опустевшая тюрьма с бетонными блоками и автономной охраной периметра" }
 ];
 
 // Структурированное описание убежища: по каждому ресурсу — уровень (влияет на
@@ -1595,6 +1931,7 @@ function renderRoster(s, opts={}){
       if(vc>0) nameRow.appendChild(el('span',{class:'vote-count', text:vc+' ГОЛОС(А)'}));
     }
     card.appendChild(nameRow);
+
     const prevMask = prevRevealMasks[i] !== undefined ? prevRevealMasks[i] : pl.r;
     for(let c=0;c<CATS.length;c++){
       const revealed = !!((pl.r>>c)&1);
@@ -1610,20 +1947,54 @@ function renderRoster(s, opts={}){
   return roster;
 }
 
+// Компактная сводка своих характеристик — одна плотная строка над кнопками
+// раскрытия. Заменяет прежнюю большую панель "Твоё досье": занимает мало места,
+// но избавляет от необходимости листать наверх к своей карточке.
+function ownDossierStrip(s, myIdx){
+  const pl = s.p[myIdx];
+  const openCount = CATS.reduce((n,_,c)=>n + (((pl.r>>c)&1)?1:0), 0);
+
+  const wrap = el('div',{class:'own-strip'});
+
+  const head = el('div',{class:'own-strip-head'});
+  head.appendChild(el('span',{class:'own-strip-title', text:'Твои данные'}));
+  const bar = el('span',{class:'own-meter-bar'});
+  bar.appendChild(el('i',{style:'width:'+Math.round(openCount/CATS.length*100)+'%'}));
+  head.appendChild(bar);
+  head.appendChild(el('span',{class:'own-strip-count', text:openCount+' / '+CATS.length}));
+  wrap.appendChild(head);
+
+  const grid = el('div',{class:'own-strip-grid'});
+  for(let c=0;c<CATS.length;c++){
+    const open = !!((pl.r>>c)&1);
+    const line = el('div',{class:'own-line'+(open?' open':'')});
+    line.appendChild(el('span',{class:'k', text:CATS[c]}));
+    line.appendChild(el('span',{class:'v', text:pl.v[c], title:pl.v[c]}));
+    grid.appendChild(line);
+  }
+  wrap.appendChild(grid);
+  return wrap;
+}
+
+function appendRosterPanel(app, s, myIdx){
+  const boardPanel = el('div',{class:'panel', 'data-tag':'Личные дела претендентов'});
+  boardPanel.appendChild(renderRoster(s, {highlightTurn:true, ownIdx:myIdx}));
+  app.appendChild(boardPanel);
+}
+
 function roomBadgeRow(code){
   const wrap = el('div',{class:'row', style:'justify-content:space-between; align-items:center;'});
   const badge = el('div',{class:'room-badge'});
   badge.appendChild(el('span',{class:'dot-live'}));
   badge.appendChild(el('span',{text:'КОМНАТА '+code+' · ОНЛАЙН'}));
   wrap.appendChild(badge);
-  const btn = el('button',{text:'Скопировать ссылку-приглашение'});
+  const btn = el('button',{class:'ghost', style:'font-size:11px; padding:8px 12px;', text:'Скопировать ссылку'});
   const msg = el('span',{class:'copied-msg', text:''});
   btn.onclick = async ()=>{
     try{ await navigator.clipboard.writeText(roomLink(code)); msg.textContent='✓ скопировано'; }
     catch(e){ msg.textContent = roomLink(code); }
   };
-  const right = el('div',{class:'row'},[btn, msg]);
-  wrap.appendChild(right);
+  wrap.appendChild(el('div',{class:'row'},[btn, msg]));
   return wrap;
 }
 
@@ -1670,7 +2041,7 @@ function colorForType(type){
     case 'spores': return ['110,230,140','60,180,90'];
     case 'glitch': return ['80,255,170','160,255,220'];
     case 'embers': return ['255,170,60','255,90,40'];
-    default: return ['230,179,37','200,140,20'];
+    default: return ['194,59,43','140,32,24'];
   }
 }
 function loopVfx(){
@@ -1752,6 +2123,13 @@ function renderLobby(){
   const app = document.getElementById('app');
   app.innerHTML = '';
 
+  const shell = el('div',{class:'shell'});
+  const col = el('div',{class:'col'});
+  const rail = el('aside',{class:'rail'});
+  shell.appendChild(col);
+  shell.appendChild(rail);
+  app.appendChild(shell);
+
   const panel = el('div',{class:'panel', 'data-tag':'Новая симуляция'});
 
   const tabs = el('div',{class:'tabs'});
@@ -1762,7 +2140,7 @@ function renderLobby(){
 
   const body = el('div',{id:'lobbyBody'});
   panel.appendChild(body);
-  app.appendChild(panel);
+  col.appendChild(panel);
 
   function showCreate(){
     tabCreate.className='tab active'; tabJoin.className='tab';
@@ -1832,8 +2210,8 @@ function renderLobby(){
   tabJoin.onclick = showJoin;
   showCreate();
 
-  const rules = el('details');
-  rules.appendChild(el('summary',{text:'Правила'}));
+  const rules = el('details',{class:'panel', 'data-tag':'Инструктаж'});
+  rules.appendChild(el('summary',{text:'Как это работает'}));
   rules.appendChild(el('div',{class:'rules-body', html:`
     Случилась катастрофа. Группа выживших нашла укрытие — какое именно, решает случай: это может быть
     бункер, военная база, крепкий дом, деревня, больница, школа и т.д. У убежища ограниченное число мест
@@ -1868,7 +2246,7 @@ function renderLobby(){
     по ночам, и выживет ли группа в итоге.<br><br>
     <span class="tiny">Все данные хранятся в общей базе данных на время игры — это игра на доверии между друзьями, а не защищённая система.</span>
   `}));
-  app.appendChild(rules);
+  rail.appendChild(rules);
 }
 
 /* ---------------- Особые способности: UI ---------------- */
@@ -1878,7 +2256,7 @@ function renderAbilityPanel(app, s, myIdx){
   const usesLeft = MAX_ABILITY_USES - (me.au||0);
   const abUsed = Array.isArray(me.abUsed) ? me.abUsed : [];
   const abilityPanel = el('div',{class:'panel fade-in-up', 'data-tag':'Особые способности'});
-  abilityPanel.appendChild(el('p',{class:'tiny', text:'Осталось использований: '+usesLeft+' из '+MAX_ABILITY_USES+' за игру. Каждую свою способность можно применить только один раз, и не больше одной способности за один ход.'}));
+  abilityPanel.appendChild(el('p',{class:'tiny', text:'Доступно использований: '+usesLeft+' из '+MAX_ABILITY_USES+'. Каждую свою способность можно применить только один раз, и не больше одной способности за один ход.'}));
 
   if(usesLeft<=0){
     abilityPanel.appendChild(el('p',{class:'tiny', text:'Способности закончились — играй дальше обычным ходом ниже.'}));
@@ -1894,7 +2272,7 @@ function renderAbilityPanel(app, s, myIdx){
 
   const myAbilities = (me.ab||[]).map(id=>abilityById(id)).filter(Boolean);
   myAbilities.forEach(ab=>{
-    const row = el('div',{style:'border-bottom:1px dashed #2a303a; padding:10px 0;'});
+    const row = el('div',{style:'border-bottom:1px solid var(--line-soft); padding:10px 0;'});
     row.appendChild(el('div',{style:'font-family:Oswald,sans-serif; letter-spacing:1px; color:var(--amber);', text:ab.name}));
     row.appendChild(el('p',{class:'tiny', style:'margin:4px 0 8px;', text:ab.desc}));
 
@@ -2293,48 +2671,59 @@ function renderGame(s, code){
   const app = document.getElementById('app');
   app.innerHTML = '';
 
+  // Каркас в две стороны экрана: слева (col) — то, с чем игрок работает
+  // прямо сейчас (ход, действие, карточки игроков), справа (rail) — постоянный
+  // контекст: комната, сводка, твисты, хроника. Контекст не мешает действию,
+  // а действие не приходится искать скроллом.
+  const shell = el('div',{class:'shell'});
+  const col = el('div',{class:'col'});
+  const rail = el('aside',{class:'rail'});
+  shell.appendChild(col);
+  shell.appendChild(rail);
+  app.appendChild(shell);
+
   const myIdx = myPlayerIdx(s);
 
-  const badgePanel = el('div',{class:'panel', style:'padding:12px 20px;'});
+  const badgePanel = el('div',{class:'panel', 'data-tag':'Комната'});
   badgePanel.appendChild(roomBadgeRow(code));
   if(myIdx>=0){
-    const idRow = el('div',{class:'row', style:'margin-top:10px; justify-content:space-between;'});
-    idRow.appendChild(el('div',{class:'tiny', html:'Ты играешь за: <b style="color:var(--amber)">'+s.p[myIdx].n+'</b>'}));
-    const resetBtn = el('button',{class:'ghost', style:'font-size:11px; padding:8px 12px;', text:'Это не я (сбросить место)'});
+    const idRow = el('div',{class:'row', style:'margin-top:11px; padding-top:10px; border-top:1px solid var(--line-soft); justify-content:space-between;'});
+    idRow.appendChild(el('div',{class:'tiny', html:'Ты играешь за: <b style="color:var(--card-own)">'+s.p[myIdx].n+'</b>'}));
+    const resetBtn = el('button',{class:'ghost', style:'font-size:10.5px; padding:7px 11px;', text:'Это не я'});
     resetBtn.onclick = ()=>{ if(confirm('Освободить это место? Придётся выбрать его заново.')) releaseSeat(code, myIdx); };
     idRow.appendChild(resetBtn);
     badgePanel.appendChild(idRow);
   }
-  app.appendChild(badgePanel);
+  col.appendChild(badgePanel);
 
   const alertPanel = el('div',{class:'panel fade-in-up', 'data-tag':'Сводка ситуации'});
   alertPanel.appendChild(el('div',{class:'alert-ticker', html:'<b>ТРЕВОГА:</b> '+s.c}));
   alertPanel.appendChild(el('div',{class:'bunker-info', text:s.b}));
-  app.appendChild(alertPanel);
+  rail.appendChild(alertPanel);
 
   const revealedTwists = Array.isArray(s.twists) ? s.twists.filter(tw=>tw.revealed) : [];
   if(revealedTwists.length>0){
     const twistPanel = el('div',{class:'panel fade-in-up', 'data-tag':'Внезапная подробность'});
     revealedTwists.forEach(tw=>{
-      twistPanel.appendChild(el('div',{class:'alert-ticker', style:'border-color:var(--neon); color:#bff7ff; margin-bottom:8px;', html:'<b>ТВИСТ:</b> '+tw.text}));
+      twistPanel.appendChild(el('div',{class:'alert-ticker', style:'border-left-color:var(--neon); margin-bottom:8px;', html:'<b>ТВИСТ:</b> '+tw.text}));
     });
-    app.appendChild(twistPanel);
+    rail.appendChild(twistPanel);
   }
 
   if(Array.isArray(s.eventFeed) && s.eventFeed.length>0){
-    const feedPanel = el('div',{class:'panel fade-in-up', 'data-tag':'Хроника событий'});
+    const feedPanel = el('div',{class:'panel fade-in-up', 'data-tag':'Сводка событий'});
     const list = el('div',{class:'feed-list'});
     s.eventFeed.slice().reverse().forEach(entry=>{
       list.appendChild(el('div',{class:'feed-item kind-'+(entry.kind||'system'), html:entry.text}));
     });
     feedPanel.appendChild(list);
-    app.appendChild(feedPanel);
+    rail.appendChild(feedPanel);
   }
 
   if(s.lastProposalNote){
     const notePanel = el('div',{class:'panel fade-in-up', 'data-tag':'Общее решение'});
-    notePanel.appendChild(el('div',{class:'alert-ticker', style:'border-color:var(--muted); color:var(--paper);', text:s.lastProposalNote}));
-    app.appendChild(notePanel);
+    notePanel.appendChild(el('div',{class:'alert-ticker', style:'border-left-color:var(--muted); background:none;', text:s.lastProposalNote}));
+    rail.appendChild(notePanel);
   }
 
   const turnIdx = currentTurnPlayer(s);
@@ -2344,11 +2733,12 @@ function renderGame(s, code){
     document.getElementById('statusLine').textContent = 'симуляция завершена';
     document.body.classList.remove('vote-mode');
     const panel = el('div',{class:'panel fade-in-up', 'data-tag':'Итог'});
-    panel.appendChild(el('h3',{text:'Рассвет наступил.', style:'font-family:Oswald,sans-serif; letter-spacing:1px;'}));
+    panel.appendChild(el('div',{class:'verdict-head', text:'Рассвет наступил'}));
+    panel.appendChild(el('p',{class:'tiny', style:'margin-bottom:12px;', text:'Двери открыты. В убежище остались:'}));
     const list = el('div',{class:'final-list'});
-    s.p.forEach((pl,i)=>{ if(!pl.e) list.appendChild(el('div',{class:'final-item', text:'✓ '+pl.n})); });
+    s.p.forEach((pl,i)=>{ if(!pl.e) list.appendChild(el('div',{class:'final-item', text:pl.n})); });
     panel.appendChild(list);
-    app.appendChild(panel);
+    col.appendChild(panel);
 
     if(s.finalOutcome){
       const outcomePanel = el('div',{class:'panel fade-in-up', 'data-tag':'Судьба общины'});
@@ -2359,12 +2749,12 @@ function renderGame(s, code){
         outcomePanel.appendChild(rolesBox);
       }
       if(Array.isArray(s.finalOutcome.eventLines) && s.finalOutcome.eventLines.length){
-        const eventsBox = el('div',{style:'margin-bottom:12px; border-top:1px dashed #2a303a; padding-top:10px;'});
+        const eventsBox = el('div',{style:'margin-bottom:12px; border-top:1px dashed var(--line-soft); padding-top:10px;'});
         s.finalOutcome.eventLines.forEach(line=>eventsBox.appendChild(el('p',{class:'tiny', style:'margin:4px 0;', text:line})));
         outcomePanel.appendChild(eventsBox);
       }
       outcomePanel.appendChild(el('p',{style:'line-height:1.7;', text:s.finalOutcome.text}));
-      app.appendChild(outcomePanel);
+      col.appendChild(outcomePanel);
     }
 
     const dossierPanel = el('div',{class:'panel fade-in-up','data-tag':'Полное досье'});
@@ -2384,7 +2774,7 @@ function renderGame(s, code){
       full.appendChild(card);
     });
     dossierPanel.appendChild(full);
-    app.appendChild(dossierPanel);
+    col.appendChild(dossierPanel);
     return;
   }
 
@@ -2394,41 +2784,39 @@ function renderGame(s, code){
     const assignBanner = el('div',{class:'turn-banner'});
     assignBanner.appendChild(el('div',{html:'<span class="cursor">▮</span> Выбирает обязанность: <b>'+turnName+'</b>'}));
     assignBanner.appendChild(el('div',{class:'phase-pill', text:'РАСПРЕДЕЛЕНИЕ'}));
-    app.appendChild(assignBanner);
+    col.appendChild(assignBanner);
+    appendRosterPanel(col, s, myIdx);
 
     const introPanel = el('div',{class:'panel fade-in-up', 'data-tag':'Последний шаг'});
     introPanel.appendChild(el('p',{text:'Вы заняли все свободные места в убежище. Прежде чем закрыть двери, распределите между собой обязанности — от этого зависит, переживёте ли вы то, что будет дальше.'}));
-    const rolesInfo = el('div',{class:'roster'});
+    const rolesInfo = el('div',{class:'duty-list'});
     DUTY_ROLES.forEach(role=>{
       const takenIdx = Object.keys(s.jobs||{}).map(Number).find(i=>s.jobs[i]===role.id);
-      const card = el('div',{class:'dossier'+(takenIdx!==undefined?' out':'')});
-      card.appendChild(el('div',{class:'pname', text:role.name}));
-      card.appendChild(el('p',{class:'tiny', text:role.desc}));
-      if(takenIdx!==undefined) card.appendChild(el('p',{class:'tiny', style:'color:var(--amber)', text:'Занято: '+s.p[takenIdx].n}));
-      rolesInfo.appendChild(card);
+      const item = el('div',{class:'duty-item'+(takenIdx!==undefined?' taken':'')});
+      const head = el('div',{class:'duty-head'});
+      head.appendChild(el('span',{text:role.name}));
+      head.appendChild(el('span',{class:'vote-count', text: takenIdx!==undefined ? s.p[takenIdx].n : 'свободно'}));
+      item.appendChild(head);
+      item.appendChild(el('p',{class:'tiny', text:role.desc}));
+      rolesInfo.appendChild(item);
     });
     introPanel.appendChild(rolesInfo);
-    app.appendChild(introPanel);
+    col.appendChild(introPanel);
 
     if(myIdx===-1){
-      app.appendChild(el('div',{class:'panel fade-in-up', 'data-tag':'Наблюдение', html:'<p class="tiny">Это устройство не привязано ни к одному из выживших, поэтому здесь только наблюдение за распределением обязанностей.</p>'}));
+      col.appendChild(el('div',{class:'panel fade-in-up', 'data-tag':'Наблюдение', html:'<p class="tiny">Это устройство не привязано ни к одному из выживших, поэтому здесь только наблюдение за распределением обязанностей.</p>'}));
       return;
     }
-
-    const ownPanel = el('div',{class:'panel fade-in-up', 'data-tag':'Твоё досье'});
-    const ownBox = el('div',{style:'background:#171a1f; padding:12px 14px;'});
-    for(let c=0;c<CATS.length;c++) ownBox.appendChild(traitRow(c, s.p[myIdx].v[c], true, false));
-    ownPanel.appendChild(ownBox);
-    app.appendChild(ownPanel);
 
     if(myIdx!==turnIdx){
       const waitPanel = el('div',{class:'panel fade-in-up', 'data-tag':'Действие'});
       waitPanel.appendChild(el('p',{class:'tiny', html:'Сейчас свою обязанность выбирает <b>'+turnName+'</b>. Экран обновится сам, когда очередь дойдёт до тебя.'}));
-      app.appendChild(waitPanel);
+      col.appendChild(waitPanel);
       return;
     }
 
     const pickPanel = el('div',{class:'panel fade-in-up', 'data-tag':'Твой выбор'});
+    pickPanel.appendChild(ownDossierStrip(s, myIdx));
     const freeRoles = DUTY_ROLES.filter(role=>{
       return Object.keys(s.jobs||{}).map(Number).find(i=>s.jobs[i]===role.id) === undefined;
     });
@@ -2458,7 +2846,7 @@ function renderGame(s, code){
       });
       pickPanel.appendChild(grid);
     }
-    app.appendChild(pickPanel);
+    col.appendChild(pickPanel);
     return;
   }
 
@@ -2470,18 +2858,16 @@ function renderGame(s, code){
     const evBanner = el('div',{class:'turn-banner'});
     evBanner.appendChild(el('div',{html:'<span class="cursor">▮</span> Выбирает действие: <b>'+turnName+'</b>'}));
     evBanner.appendChild(el('div',{class:'phase-pill', text:'СОБЫТИЕ '+(s.eventPhase||1)+'/'+EVENT_PHASES_TOTAL}));
-    app.appendChild(evBanner);
+    col.appendChild(evBanner);
 
     const eventPanel = el('div',{class:'panel fade-in-up', 'data-tag':'Что произошло'});
-    eventPanel.appendChild(el('div',{class:'alert-ticker', style:'border-color:var(--rust);', html:'<b>СОБЫТИЕ:</b> '+event.text}));
-    app.appendChild(eventPanel);
+    eventPanel.appendChild(el('div',{class:'alert-ticker', html:'<b>СОБЫТИЕ:</b> '+event.text}));
+    col.appendChild(eventPanel);
 
-    const boardPanelEv = el('div',{class:'panel', 'data-tag':'Личные дела претендентов'});
-    boardPanelEv.appendChild(renderRoster(s, {highlightTurn:true, ownIdx:myIdx}));
-    app.appendChild(boardPanelEv);
+    appendRosterPanel(col, s, myIdx);
 
     if(myIdx===-1){
-      app.appendChild(el('div',{class:'panel fade-in-up', 'data-tag':'Наблюдение', html:'<p class="tiny">Это устройство не привязано ни к одному игроку, поэтому здесь только наблюдение.</p>'}));
+      col.appendChild(el('div',{class:'panel fade-in-up', 'data-tag':'Наблюдение', html:'<p class="tiny">Это устройство не привязано ни к одному игроку, поэтому здесь только наблюдение.</p>'}));
       return;
     }
 
@@ -2516,24 +2902,19 @@ function renderGame(s, code){
         outcastPanel.appendChild(helpBtn);
         outcastPanel.appendChild(harmBtn);
       }
-      app.appendChild(outcastPanel);
+      col.appendChild(outcastPanel);
       return;
     }
-
-    const ownPanelEv = el('div',{class:'panel fade-in-up', 'data-tag':'Твоё досье'});
-    const ownBoxEv = el('div',{style:'background:#171a1f; padding:12px 14px;'});
-    for(let c=0;c<CATS.length;c++) ownBoxEv.appendChild(traitRow(c, s.p[myIdx].v[c], true, false));
-    ownPanelEv.appendChild(ownBoxEv);
-    app.appendChild(ownPanelEv);
 
     if(myIdx!==turnIdx){
       const waitPanel = el('div',{class:'panel fade-in-up', 'data-tag':'Действие'});
       waitPanel.appendChild(el('p',{class:'tiny', html:'Сейчас выбирает <b>'+turnName+'</b>. Экран обновится сам, когда очередь дойдёт до тебя.'}));
-      app.appendChild(waitPanel);
+      col.appendChild(waitPanel);
       return;
     }
 
     const actPanel = el('div',{class:'panel fade-in-up', 'data-tag':'Твой выбор'});
+    actPanel.appendChild(ownDossierStrip(s, myIdx));
     actPanel.appendChild(el('p',{text:'Что делаешь в эту фазу?'}));
     const actGrid = el('div',{class:'cat-btn-grid'});
     EVENT_ACTIONS.forEach(a=>{
@@ -2552,7 +2933,7 @@ function renderGame(s, code){
     EVENT_ACTIONS.forEach(a=>{
       actPanel.appendChild(el('p',{class:'tiny', style:'margin:4px 0;', text:a.name+' — '+a.desc}));
     });
-    app.appendChild(actPanel);
+    col.appendChild(actPanel);
     return;
   }
 
@@ -2569,7 +2950,7 @@ function renderGame(s, code){
       ? '<b>ГРУППА ПОПРОСИЛА ВРЕМЯ.</b> Большинство проголосовавших выбрали продлить раскрытие вместо исключения. Каждый на своём ходу раскрывает ещё одну характеристику — после этого голосование начнётся снова.'
       : '<b>ГОЛОСА РАЗДЕЛИЛИСЬ ПОРОВНУ.</b> Никто не исключён. Каждый на своём ходу раскрывает ещё одну характеристику — после этого голосование начнётся снова.'
     }));
-    app.appendChild(tieNote);
+    col.appendChild(tieNote);
   }
 
   const banner = el('div',{class:'turn-banner'});
@@ -2578,11 +2959,8 @@ function renderGame(s, code){
     s.ph==='tiebreak' ? (isExtendTie ? 'ПРОДЛЕНИЕ → РАСКРЫТИЕ' : 'НИЧЬЯ → РАСКРЫТИЕ')
     : (s.ph==='reveal' ? 'РАСКРЫТИЕ · Р.'+s.rd : 'ГОЛОСОВАНИЕ · Р.'+s.rd)
   }));
-  app.appendChild(banner);
-
-  const boardPanel = el('div',{class:'panel', 'data-tag':'Личные дела претендентов'});
-  boardPanel.appendChild(renderRoster(s, {highlightTurn:true, ownIdx:myIdx}));
-  app.appendChild(boardPanel);
+  col.appendChild(banner);
+  appendRosterPanel(col, s, myIdx);
 
   // ---- Место ещё не закреплено за этим устройством: показываем экран выбора личности,
   // без доступа к какой-либо панели действий и без возможности заглянуть в чужие данные ----
@@ -2594,9 +2972,9 @@ function renderGame(s, code){
     s.p.forEach((pl,i)=>{
       const taken = !!s.claims[i];
       if(!taken) anyFree = true;
-      const row = el('div',{class:'row', style:'justify-content:space-between; padding:8px 0; border-bottom:1px dashed #2a303a;'});
-      row.appendChild(el('span',{text:pl.n}));
-      const btn = el('button',{class: taken ? 'ghost' : 'primary', text: taken ? 'Занято' : 'Это я'});
+      const row = el('div',{class:'claim-row'});
+      row.appendChild(el('span',{class:'claim-name', text:pl.n}));
+      const btn = el('button',{class: taken ? 'ghost' : 'primary', style:'font-size:11px; padding:8px 12px;', text: taken ? 'Занято' : 'Это я'});
       if(taken){ btn.setAttribute('disabled','disabled'); }
       else{
         btn.onclick = ()=>{
@@ -2615,22 +2993,16 @@ function renderGame(s, code){
       claimPanel.appendChild(el('p',{class:'tiny', style:'margin-top:10px;', text:'Все места уже закреплены за другими устройствами. Если это твоё место — попроси того, кто его занял, нажать «Это не я (сбросить место)» в шапке комнаты.'}));
     }
     claimPanel.appendChild(seatErr);
-    app.appendChild(claimPanel);
+    col.appendChild(claimPanel);
     return;
   }
 
   const iAmEliminated = s.p[myIdx].e;
 
   const actionPanel = el('div',{class:'panel fade-in-up', 'data-tag':'Действие'});
-  const stamp = el('div',{class:'stamp', text:'ТВОЁ ДОСЬЕ'});
-  actionPanel.appendChild(stamp);
-  const own = el('div',{class:'panel', style:'background:#171a1f; padding:12px 14px; margin-bottom:14px;'});
-  for(let c=0;c<CATS.length;c++) own.appendChild(traitRow(c, s.p[myIdx].v[c], true, false));
-  actionPanel.appendChild(own);
-
   const actionArea = el('div',{id:'actionArea'});
   actionPanel.appendChild(actionArea);
-  app.appendChild(actionPanel);
+  col.appendChild(actionPanel);
 
   if(iAmEliminated){
     actionArea.appendChild(el('p',{class:'tiny', text:'Ты выбыл(а) из игры. Можешь наблюдать за дальнейшим развитием событий, но действий больше нет.'}));
@@ -2669,7 +3041,7 @@ function renderGame(s, code){
     return;
   }
 
-  renderAbilityPanel(app, s, myIdx);
+  renderAbilityPanel(col, s, myIdx);
 
   const chosen = myIdx;
 
@@ -2688,10 +3060,15 @@ function renderGame(s, code){
       };
       actionArea.appendChild(skipBtn);
     } else {
-      actionArea.appendChild(el('p',{text:'Выбери, какую характеристику раскрыть для всех:'}));
+      actionArea.appendChild(ownDossierStrip(s, chosen));
+      actionArea.appendChild(el('p',{class:'tiny', style:'margin-bottom:2px;', text:'Выбери, какую характеристику раскрыть для всех:'}));
       const grid = el('div',{class:'cat-btn-grid'});
       hidden.forEach(catIdx=>{
-        const b = el('button',{text:CATS[catIdx]});
+        // На самой кнопке видно, что именно откроется — не нужно листать наверх к карточке
+        const b = el('button',{class:'cat-btn'});
+        b.appendChild(el('span',{class:'bk', text:CATS[catIdx]}));
+        b.appendChild(el('span',{class:'bv', text:s.p[chosen].v[catIdx]}));
+        b.title = CATS[catIdx]+': '+s.p[chosen].v[catIdx];
         b.onclick = ()=>{
           const next = JSON.parse(JSON.stringify(s));
           next.p[chosen].r = next.p[chosen].r | (1<<catIdx);
@@ -2716,6 +3093,7 @@ function renderGame(s, code){
       actionArea.appendChild(voteEarlyBtn);
     }
   } else if(s.ph==='vote'){
+    actionArea.appendChild(ownDossierStrip(s, chosen));
     actionArea.appendChild(el('label',{text:'За кого голосуешь на исключение?'}));
     const voteSel = el('select');
     voteSel.appendChild(el('option',{value:'', text:'Выберите игрока'}));
@@ -2745,6 +3123,7 @@ function renderGame(s, code){
     };
     actionArea.appendChild(extendBtn);
   }
+
 }
 
 /* ---------------- Boot ---------------- */
