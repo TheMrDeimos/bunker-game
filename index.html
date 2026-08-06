@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
 <title>ПРОТОКОЛ: РАССВЕТ</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='8' fill='%230e0e0d'/%3E%3Cg transform='rotate(45 32 32)'%3E%3Crect x='19' y='19' width='26' height='26' fill='none' stroke='%23ff2f2f' stroke-width='5'/%3E%3Crect x='27' y='27' width='10' height='10' fill='%23ff2f2f'/%3E%3C/g%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&family=Russo+One&display=swap" rel="stylesheet">
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
@@ -517,6 +518,9 @@
     padding-right:4px;
   }
   .feed-item{
+    display:flex;
+    align-items:baseline;
+    gap:8px;
     background:transparent;
     border:none;
     border-left:2px solid var(--line);
@@ -527,10 +531,27 @@
     border-radius:0;
     color:var(--muted);
   }
-  .feed-item.kind-ability{border-left-color:var(--amber); color:var(--paper);}
+  .feed-time{
+    flex:0 0 auto;
+    font-family:'IBM Plex Mono',monospace;
+    font-size:9.5px;
+    color:var(--muted-2);
+    white-space:nowrap;
+  }
+  .feed-text{flex:1 1 auto; min-width:0;}
   .feed-item.kind-vote{border-left-color:var(--rust); color:var(--paper);}
   .feed-item.kind-reveal{border-left-color:var(--turn-green);}
   .feed-item.kind-system{border-left-color:var(--line);}
+  /* Использование способности — не просто цветная полоска, а целая рамка,
+     чтобы такие записи сразу бросались в глаза на фоне обычной хроники. */
+  .feed-item.kind-ability{
+    border:1px solid var(--amber-dim);
+    border-left:3px solid var(--amber);
+    background:rgba(200,52,42,0.08);
+    padding:7px 10px;
+    color:var(--paper);
+  }
+  .feed-item.kind-ability .feed-time{color:var(--amber);}
 
   /* ---------- формы ---------- */
   label{
@@ -704,6 +725,33 @@
     border-color:var(--card-danger) !important;
     box-shadow:0 0 16px 3px rgba(255,59,59,0.65), 0 0 0 1px var(--card-danger) inset !important;
   }
+  /* Тряска карточек во время голосования — фоновое напряжение для всех живых,
+     и заметно сильнее у того, на кого сейчас больше всего голосов. */
+  @keyframes cardShake{
+    0%,100%{ transform:translate(0,0); }
+    20%{ transform:translate(-1px,0); }
+    40%{ transform:translate(1px,1px); }
+    60%{ transform:translate(-1px,-1px); }
+    80%{ transform:translate(1px,0); }
+  }
+  @keyframes cardShakeHard{
+    0%,100%{ transform:translate(0,0) rotate(0); }
+    15%{ transform:translate(-2px,1px) rotate(-0.4deg); }
+    30%{ transform:translate(2px,-1px) rotate(0.4deg); }
+    45%{ transform:translate(-2px,-1px) rotate(-0.3deg); }
+    60%{ transform:translate(2px,1px) rotate(0.3deg); }
+    75%{ transform:translate(-1px,0) rotate(-0.2deg); }
+  }
+  body.vote-mode .dossier:not(.out){
+    animation: cardShake 3.6s ease-in-out infinite;
+  }
+  body.vote-mode .dossier.vote-leader{
+    animation: cardShakeHard 1.4s ease-in-out infinite;
+  }
+  @media (prefers-reduced-motion: reduce){
+    body.vote-mode .dossier:not(.out),
+    body.vote-mode .dossier.vote-leader{ animation:none !important; }
+  }
   .dossier .pname{
     font-family:'Oswald', sans-serif;
     font-size:16px;
@@ -744,8 +792,8 @@
   /* ---------- компактная сводка своих данных над кнопками раскрытия ---------- */
   .own-strip{
     border:1px solid var(--line);
-    border-left:2px solid var(--card-own);
-    background:#191510;
+    border-left:2px solid var(--card-danger);
+    background:#1a1212;
     padding:9px 12px 7px;
     margin:0 0 14px;
   }
@@ -756,7 +804,7 @@
   .own-strip-title{
     font-family:'Oswald',sans-serif;
     font-size:10px; letter-spacing:2px; text-transform:uppercase;
-    color:var(--card-own); white-space:nowrap;
+    color:var(--card-danger); white-space:nowrap;
   }
   .own-strip-count{
     font-family:'IBM Plex Mono',monospace;
@@ -766,8 +814,8 @@
     flex:1; height:2px; background:var(--line-soft); position:relative; overflow:hidden; min-width:40px;
   }
   .own-meter-bar i{
-    display:block; height:100%; background:var(--card-own);
-    box-shadow:0 0 6px rgba(230,179,37,.7);
+    display:block; height:100%; background:var(--card-danger);
+    box-shadow:0 0 6px rgba(255,59,59,.7);
     transition:width .4s ease;
   }
   .own-strip-grid{
@@ -792,11 +840,11 @@
     color:#7d786d; font-style:italic;
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
   }
-  /* уже раскрытое — ярче и без курсива, с горящей меткой */
+  /* уже раскрытое — ярко-красным и без курсива, скрытое — серым */
   .own-line.open .k{color:var(--muted);}
   .own-line.open .v{color:var(--paper); font-style:normal;}
   .own-line.open .k::before{
-    content:"●"; color:var(--card-own); font-size:7px;
+    content:"●"; color:var(--card-danger); font-size:7px;
     margin-right:5px; vertical-align:middle;
   }
   .own-line:not(.open) .k::before{
@@ -2010,7 +2058,7 @@ function pushLog(s, text, kind){
   const feed = Array.isArray(s.eventFeed) ? s.eventFeed.slice() : [];
   const id = (s.eventFeedSeq||0) + 1;
   s.eventFeedSeq = id;
-  feed.push({ id, kind: kind||'system', text });
+  feed.push({ id, kind: kind||'system', text, ts: Date.now() });
   s.eventFeed = feed.length > 5 ? feed.slice(feed.length-5) : feed;
 }
 
@@ -2976,7 +3024,7 @@ function buildAbilityForm(container, ab, s, myIdx){
         confirmAndApply(next=>{
           next.peeks = next.peeks || [];
           next.peeks.push({viewer:myIdx, target:ti, cat:ci});
-        }, '🕵️ '+s.p[myIdx].n+' использовал(а) способность «Тайный осведомитель» (что именно узнал(а) — не разглашается).');
+        }, '🕵️ '+s.p[myIdx].n+' узнал(а) у '+s.p[ti].n+' характеристику «'+CATS[ci]+'» — только для себя (значение не разглашается).');
       }
     };
     container.appendChild(btn);
@@ -3115,7 +3163,7 @@ function buildAbilityForm(container, ab, s, myIdx){
         next.peeks = next.peeks || [];
         next.peeks.push({viewer:myIdx, target:t1, cat:c1});
         next.peeks.push({viewer:myIdx, target:t2, cat:c2});
-      }, '🕵️🕵️ '+s.p[myIdx].n+' использовал(а) способность «Двойной осведомитель» (подробности не разглашаются).');
+      }, '🕵️🕵️ '+s.p[myIdx].n+' узнал(а) — только для себя — «'+CATS[c1]+'» у '+s.p[t1].n+' и «'+CATS[c2]+'» у '+s.p[t2].n+' (значения не разглашаются).');
     };
     container.appendChild(btn);
 
@@ -3467,7 +3515,16 @@ function renderGame(s, code){
     const feedPanel = el('div',{class:'panel fade-in-up', 'data-tag':'Сводка событий'});
     const list = el('div',{class:'feed-list'});
     s.eventFeed.slice().reverse().forEach(entry=>{
-      list.appendChild(el('div',{class:'feed-item kind-'+(entry.kind||'system'), html:entry.text}));
+      const item = el('div',{class:'feed-item kind-'+(entry.kind||'system')});
+      if(entry.ts){
+        const d = new Date(entry.ts);
+        const hh = String(d.getHours()).padStart(2,'0');
+        const mm = String(d.getMinutes()).padStart(2,'0');
+        const ss = String(d.getSeconds()).padStart(2,'0');
+        item.appendChild(el('span',{class:'feed-time', text:hh+':'+mm+':'+ss}));
+      }
+      item.appendChild(el('span',{class:'feed-text', html:entry.text}));
+      list.appendChild(item);
     });
     feedPanel.appendChild(list);
     rail.appendChild(feedPanel);
