@@ -291,20 +291,47 @@
     details.panel > summary::before{transition:none;}
   }
 
-  /* ---------- полоса прокрутки как элемент нашего интерфейса ----------
-     Направляющая — та же служебная пунктирная линия, что в шапке и в
-     заголовках сворачиваемых секций. Бегунок — красный ромб: за него тянут. */
-  *{
+  /* ---------- полосы прокрутки ----------
+     Страница целиком — обычный аккуратный бегунок в гамме интерфейса.
+     Фирменный ромб оставлен только для внутренних прокручиваемых блоков. */
+  html{
+    scrollbar-width:thin;
+    scrollbar-color:#4a4740 transparent;
+  }
+  body::-webkit-scrollbar, html::-webkit-scrollbar{width:11px; height:11px;}
+  body::-webkit-scrollbar-track, html::-webkit-scrollbar-track{
+    background:var(--bg-0);
+    border-left:1px solid var(--line-soft);
+  }
+  body::-webkit-scrollbar-thumb, html::-webkit-scrollbar-thumb{
+    background:#403d36;
+    border:3px solid var(--bg-0);
+    border-radius:6px;
+    min-height:40px;
+  }
+  body::-webkit-scrollbar-thumb:hover, html::-webkit-scrollbar-thumb:hover{background:#57534a;}
+
+  /* Внутренние области прокрутки: направляющая-пунктир и ромб-бегунок */
+  .rail, .feed-list, .rules-body, .linkbox{
     scrollbar-width:thin;
     scrollbar-color:var(--amber) transparent;
   }
-  ::-webkit-scrollbar{width:14px; height:14px; background:transparent;}
-  ::-webkit-scrollbar-track{
+  .rail::-webkit-scrollbar,
+  .feed-list::-webkit-scrollbar,
+  .rules-body::-webkit-scrollbar,
+  .linkbox::-webkit-scrollbar{width:14px; height:14px; background:transparent;}
+  .rail::-webkit-scrollbar-track,
+  .feed-list::-webkit-scrollbar-track,
+  .rules-body::-webkit-scrollbar-track,
+  .linkbox::-webkit-scrollbar-track{
     background:
       repeating-linear-gradient(180deg, var(--amber-dim) 0 9px, transparent 9px 18px)
       center top / 1px 100% repeat-y;
   }
-  ::-webkit-scrollbar-thumb{
+  .rail::-webkit-scrollbar-thumb,
+  .feed-list::-webkit-scrollbar-thumb,
+  .rules-body::-webkit-scrollbar-thumb,
+  .linkbox::-webkit-scrollbar-thumb{
     background:
       url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 14'%3E%3Cpath d='M7 0.6L13.4 7L7 13.4L0.6 7Z' fill='%23c8342a'/%3E%3C/svg%3E")
       center center / 14px 14px no-repeat,
@@ -313,18 +340,14 @@
     min-height:46px;
     border:none;
   }
-  ::-webkit-scrollbar-thumb:hover{
+  .rail::-webkit-scrollbar-thumb:hover,
+  .feed-list::-webkit-scrollbar-thumb:hover,
+  .rules-body::-webkit-scrollbar-thumb:hover,
+  .linkbox::-webkit-scrollbar-thumb:hover{
     background:
       url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 14'%3E%3Cpath d='M7 0.2L13.8 7L7 13.8L0.2 7Z' fill='%23e0553f'/%3E%3C/svg%3E")
       center center / 14px 14px no-repeat,
       linear-gradient(180deg, transparent, rgba(224,85,63,.7), transparent)
-      center top / 1px 100% no-repeat;
-  }
-  ::-webkit-scrollbar-thumb:active{
-    background:
-      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 14'%3E%3Cpath d='M7 0.2L13.8 7L7 13.8L0.2 7Z' fill='%23ff3b3b'/%3E%3C/svg%3E")
-      center center / 14px 14px no-repeat,
-      linear-gradient(180deg, transparent, rgba(255,59,59,.8), transparent)
       center top / 1px 100% no-repeat;
   }
   ::-webkit-scrollbar-button{display:none; width:0; height:0;}
@@ -1372,9 +1395,22 @@ function advanceAfterEventChoice(s){
   const act = activeIdx(s);
   if(s.tp >= act.length){
     resolveEventPhase(s);
+    rollRefugeSearch(s);
     if((s.eventPhase||0) >= EVENT_PHASES_TOTAL){
       s.finalOutcome = computeFinalOutcome(s);
-      s.ph = "end";
+      const r = ensureRefuge(s);
+      const crew = outcastIdx(s);
+      if(r.found && crew.length > 0){
+        // Последняя ночь: нашедший зовёт к себе всех изгнанников,
+        // и им предстоит распределить обязанности уже между собой
+        r.invited = true;
+        r.jobs = {};
+        s.tp = 0;
+        s.ph = "refuge";
+        pushLog(s, '🕯 Последняя ночь: изгнанники уходят в найденное укрытие и делят обязанности между собой.', 'system');
+      } else {
+        s.ph = "end";
+      }
     } else {
       startEventPhase(s);
     }
@@ -1423,7 +1459,9 @@ function resolveEventPhase(s){
   }
   casualties = [...new Set(casualties)];
 
-  // шанс вернуть в игру одного из "изгнанников", если в этой фазе он выбрал помогать
+  // шанс вернуть в игру одного из «изгнанников», если в этой фазе он выбрал помогать.
+  // Важно: погибший всё равно погибает — помогавший занимает освободившееся место,
+  // иначе в убежище оказалось бы больше людей, чем в нём есть мест.
   let revived = null;
   if(casualties.length>0 && !s.revivalUsed){
     const helpers = Object.keys(s.outcastChoices||{}).map(Number)
@@ -1432,7 +1470,6 @@ function resolveEventPhase(s){
       revived = pick(helpers);
       s.p[revived].e = false;
       s.revivalUsed = true;
-      casualties = casualties.slice(1); // спасённый занимает место того, кто должен был погибнуть
     }
   }
 
@@ -1440,10 +1477,10 @@ function resolveEventPhase(s){
 
   const successCount = results.filter(r=>r.success).length;
   let narrative = '«'+event.text+'» — ';
-  if(casualties.length>0){
+  if(casualties.length>0 && revived){
+    narrative += casualties.map(i=>s.p[i].n).join(', ')+' погиб(ли), и освободившееся место занял(а) '+s.p[revived].n+', вернувшись(ись) из изгнания.';
+  } else if(casualties.length>0){
     narrative += 'не обошлось без потерь: '+casualties.map(i=>s.p[i].n).join(', ')+' погиб(ли), пытаясь защитить остальных.';
-  } else if(revived){
-    narrative += s.p[revived].n+' вернулся(лась) в решающий момент и помог(ла) избежать трагедии.';
   } else if(event.favored==='attack'){
     narrative += 'угрозу удалось отбить, обошлось без потерь.';
   } else {
@@ -1454,6 +1491,189 @@ function resolveEventPhase(s){
   s.eventLog.push({ phase:s.eventPhase, text:event.text, results, casualties, revived, note:narrative });
 }
 
+
+/* ---------------- Режим «История выживания» ----------------
+   Исключённые голосованием не выбывают из игры окончательно. У них своя линия:
+   1) на ПОСЛЕДНЕМ голосовании они сообща отдают один коллективный голос —
+      это шанс вытащить наружу того, кто будет полезен им самим;
+   2) в фазах событий каждый решает: помогать убежищу (и получить шанс занять
+      место погибшего) или искать своё укрытие на поверхности;
+   3) если кто-то находит убежище, в последнюю ночь он зовёт туда всех
+      изгнанников — и они распределяют обязанности уже между собой,
+      с заметно меньшими, но реальными шансами дожить до рассвета. */
+
+const REFUGE_ROLES = [
+  { id:"shelter", name:"Кров и тепло", desc:"Латает стены, держит огонь и не даёт группе замёрзнуть ночью.",
+    fitProf:["Инженер-строитель","Столяр","Механик","Слесарь","Электрик","Инженер-электрик"],
+    fitHobby:["Выживание в лесу","Кузнечное дело","Реставрация техники","Резьба по дереву"] },
+  { id:"forage", name:"Добыча и вода", desc:"Ищет еду и чистую воду там, где их уже никто не ищет.",
+    fitProf:["Повар","Агроном","Фермер","Ветеринар","Повар-кондитер"],
+    fitHobby:["Охота и разделка дичи","Рыбалка и вязание узлов","Знание трав и растений","Садоводство","Кулинария","Пчеловодство"] },
+  { id:"care", name:"Раны и болезни",  desc:"Без медикаментов и оборудования вытягивает тех, кого ещё можно вытянуть.",
+    fitProf:["Хирург","Военный фельдшер","Ветеринар","Радиолог","Психолог"],
+    fitHobby:["Знание трав и растений","Йога и медитация"],
+    fitSecret:["Владеет навыками первой помощи, но скрывает это"] },
+  { id:"watch",  name:"Дозор и разведка", desc:"Стережёт сон группы и первым уходит смотреть, что там за холмом.",
+    fitProf:["Снайпер","Военный сапёр","Полицейский","Пожарный"],
+    fitHobby:["Стрельба из лука","Боевые искусства","Рукопашный бой","Выживание в лесу","Ориентирование на местности"] }
+];
+function refugeRoleById(id){ return REFUGE_ROLES.find(r=>r.id===id); }
+
+// Что повышает шанс найти укрытие на поверхности. Проверяем по ключевым словам,
+// а не по точному совпадению: наборы характеристик со временем пополняются.
+const REFUGE_SEEK_HINTS = {
+  prof:   ["сапёр","снайпер","полицейск","пожарн","геолог","механик","строител","водител","дальнобой","егер","развед","альпин"],
+  hobby:  ["выживание","ориентирован","охота","туризм","альпин","поход","рыбалк","картограф","спелео"],
+  bag:    ["рация","компас","карта","фонар","верёвк","нож","топор","спальник","палатк","бинокл"],
+  health: ["здоров","отличн","вынослив"]
+};
+function hintHit(value, list){
+  const v = (value||'').toLowerCase();
+  return list.some(k=>v.indexOf(k) !== -1);
+}
+
+const REFUGE_TIERS = [
+  { min:5, label:"Укрытие устояло", texts:[
+    "Найденное убежище оказалось крепче, чем выглядело снаружи. К весне у группы есть очаг, запас воды и распределённые дежурства — не бункер, но и не смерть под открытым небом. Изгнанники дожили до рассвета и встретили его на своих условиях.",
+    "Их выгнали, и они построили своё. Обязанности легли по способностям, крыша держит, дозор не спит — эта горстка людей выжила там, где выжить не должна была."
+  ]},
+  { min:1, label:"Дотянули до рассвета", texts:[
+    "Зима вышла страшной: голод, болезни и ночи без сна. Но укрытие выдержало, и к рассвету группа всё ещё дышит — исхудавшая, злая и живая.",
+    "Они дожили, но заплатили за это дорого. Кто-то потерял здоровье, кто-то — веру в людей. И всё же дверь их убежища открылась изнутри."
+  ]},
+  { min:-3, label:"Выжили не все", texts:[
+    "Укрытие спасло не всех. Обязанности легли не на тех, припасов не хватило, и до рассвета дошли лишь те, кому повезло больше остальных.",
+    "От группы осталась половина. Найденное убежище дало отсрочку, но не спасение — и всё же кто-то встретил утро."
+  ]},
+  { min:-Infinity, label:"Укрытие не спасло", texts:[
+    "Стены не держали тепло, воду брать было негде, а тот, кто должен был лечить, сам слёг первым. Второй шанс группа не использовала — до рассвета не дошёл никто.",
+    "Они нашли убежище, но не нашли согласия. Роли разобрали как попало, и поверхность забрала их всех — просто чуть медленнее, чем могла бы."
+  ]}
+];
+
+/* --- Изгнанники: коллективный голос, поиск укрытия, свой финал --- */
+
+function outcastIdx(s){
+  return s.p.map((_,i)=>i).filter(i=>s.p[i].e);
+}
+
+// Последнее голосование — то, после которого мест в убежище хватит ровно всем
+function isLastVote(s){
+  return activeIdx(s).length === finalSeats(s.p.length) + 1;
+}
+
+// Один голос на всех: считаем большинство среди изгнанников.
+// При равенстве коллективный голос не формируется — договориться не смогли.
+function outcastCollectiveTarget(s){
+  const votes = Object.keys(s.outcastVote||{}).map(Number)
+    .filter(i=>s.p[i] && s.p[i].e)
+    .map(i=>s.outcastVote[i])
+    .filter(v=>typeof v==='number' && v>=0 && s.p[v] && !s.p[v].e);
+  if(!votes.length) return null;
+  const counts = {};
+  votes.forEach(v=>{ counts[v] = (counts[v]||0)+1; });
+  let max = -1, best = [];
+  Object.keys(counts).map(Number).forEach(idx=>{
+    if(counts[idx] > max){ max = counts[idx]; best = [idx]; }
+    else if(counts[idx] === max) best.push(idx);
+  });
+  return best.length === 1 ? best[0] : null;
+}
+
+function ensureRefuge(s){
+  if(!s.refuge || typeof s.refuge !== 'object'){
+    s.refuge = { progress:0, found:false, finder:-1, invited:false, jobs:{}, tp:0 };
+  }
+  if(typeof s.refuge.jobs !== 'object' || s.refuge.jobs === null) s.refuge.jobs = {};
+  return s.refuge;
+}
+
+// После каждой фазы событий: один общий бросок на всех, кто в эту фазу искал
+// укрытие. Именно общий, а не по броску на каждого — иначе при пятерых
+// изгнанниках укрытие находилось бы почти всегда и переставало быть событием.
+function rollRefugeSearch(s){
+  const r = ensureRefuge(s);
+  if(r.found) return;
+  const seekers = Object.keys(s.outcastChoices||{}).map(Number)
+    .filter(i=>s.outcastChoices[i]==='search' && s.p[i] && s.p[i].e);
+  if(!seekers.length) return;
+
+  // Пригодность считаем по лучшему из искателей: достаточно одного,
+  // кто действительно умеет ориентироваться на поверхности.
+  let best = 0;
+  seekers.forEach(i=>{
+    const pl = s.p[i];
+    let fit = 0;
+    if(hintHit(pl.v[0], REFUGE_SEEK_HINTS.prof))   fit += 0.035; // профессия
+    if(hintHit(pl.v[2], REFUGE_SEEK_HINTS.hobby))  fit += 0.035; // хобби/навык
+    if(hintHit(pl.v[4], REFUGE_SEEK_HINTS.bag))    fit += 0.025; // личный багаж
+    if(hintHit(pl.v[1], REFUGE_SEEK_HINTS.health)) fit += 0.015; // здоровье
+    if(fit > best) best = fit;
+  });
+
+  const chance = Math.min(0.16,
+    0.03                                   // базовый шанс сам по себе мизерный
+    + 0.02 * seekers.length                // больше рук — шире поиск
+    + best                                 // и пригодность лучшего из них
+    + Math.min(0.03, (r.progress||0)*0.01) // накопленные вылазки
+  );
+
+  r.progress = (r.progress||0) + seekers.length;
+  if(Math.random() < chance){
+    const finder = pick(seekers);
+    r.found = true;
+    r.finder = finder;
+    pushLog(s, '🏚 '+s.p[finder].n+' нашёл(ла) заброшенное укрытие на поверхности и зовёт туда остальных изгнанников.', 'ability');
+  }
+}
+
+function computeRefugeOutcome(s){
+  const r = ensureRefuge(s);
+  const crew = outcastIdx(s);
+  const jobs = r.jobs || {};
+  // Стартовая позиция заведомо хуже бункерной: ни стен, ни припасов, ни плана
+  let score = -3 + Math.min(crew.length, 5);
+  const roleLines = [];
+
+  REFUGE_ROLES.forEach(role=>{
+    const assignedIdx = Object.keys(jobs).map(Number).find(i=>jobs[i]===role.id);
+    if(assignedIdx===undefined || !s.p[assignedIdx]){
+      score -= 2;
+      roleLines.push(role.name+': взяться за это было некому.');
+      return;
+    }
+    const pl = s.p[assignedIdx];
+    let roleScore = 0;
+    if(role.fitProf && role.fitProf.includes(pl.v[0])) roleScore += 2;
+    if(role.fitHobby && role.fitHobby.includes(pl.v[2])) roleScore += 2;
+    if(role.fitSecret && role.fitSecret.includes(pl.v[5])) roleScore += 1;
+    // на поверхности здоровье решает больше, чем в бункере
+    if(/(инвалид|хроническ|тяжёл|астма|порок|слеп|глухот|протез)/i.test(pl.v[1]||'')) roleScore -= 2;
+    if(roleScore === 0) roleScore -= 1; // взялся, но ничего для этого не умеет
+    score += roleScore;
+    const verdict = roleScore>=2 ? 'тянет эту работу' : (roleScore<=-1 ? 'не справляется' : 'кое-как справляется');
+    roleLines.push(role.name+': '+pl.n+' — '+verdict+'.');
+  });
+
+  const finder = s.p[r.finder];
+  const tier = REFUGE_TIERS.find(t=>score>=t.min) || REFUGE_TIERS[REFUGE_TIERS.length-1];
+  return {
+    score,
+    tierLabel: tier.label,
+    text: pick(tier.texts),
+    roleLines,
+    finderName: finder ? finder.n : '',
+    crewNames: crew.map(i=>s.p[i].n)
+  };
+}
+
+function advanceAfterRefugeAssign(s){
+  s.tp++;
+  if(s.tp >= outcastIdx(s).length){
+    s.refugeOutcome = computeRefugeOutcome(s);
+    s.ph = 'end';
+  }
+}
 
 const ALL_CATS_MASK = (1 << CATS.length) - 1;
 const EARLY_VOTE_FROM_ROUND = 1; // досрочное голосование доступно с самого начала раскрытия в любом цикле
@@ -1636,6 +1856,9 @@ function makeGame(names){
     currentEvent:null,
     eventChoices:{},
     outcastChoices:{},
+    outcastVote:{},
+    finalVoteOpen:false,
+    refuge:{ progress:0, found:false, finder:-1, invited:false, jobs:{}, tp:0 },
     eventLog:[],
     usedEventIdx:[],
     revivalUsed:false,
@@ -1689,6 +1912,12 @@ function switchToVote(s){
   s.vt = new Array(s.p.length).fill(-1);
   s.turnAbilityUsed = false;
   s.tieReason = null;
+  // Решающее голосование: у изгнанников появляется один общий голос
+  s.outcastVote = {};
+  s.finalVoteOpen = isLastVote(s) && outcastIdx(s).length > 0;
+  if(s.finalVoteOpen){
+    pushLog(s, '🕯 Последнее голосование. Изгнанники получают один общий голос — они выберут, кого вытащить наружу к себе.', 'vote');
+  }
 }
 
 /* ---------------- Коллективные предложения (нужно согласие всех живых) ---------------- */
@@ -1748,6 +1977,17 @@ function tallyAndEliminate(s){
   const counts = {};
   s.vt.forEach(t=>{ if(t>=0) counts[t]=(counts[t]||0)+1; });
 
+  // На последнем голосовании изгнанники добавляют один общий голос
+  if(s.finalVoteOpen){
+    const collective = outcastCollectiveTarget(s);
+    if(collective !== null){
+      counts[collective] = (counts[collective]||0) + 1;
+      pushLog(s, '🕯 Изгнанники отдали свой общий голос против игрока '+s.p[collective].n+'.', 'vote');
+    } else if(Object.keys(s.outcastVote||{}).length > 0){
+      pushLog(s, '🕯 Изгнанники не смогли договориться — их общий голос пропал впустую.', 'vote');
+    }
+  }
+
   // голоса, отданные против игрока, который защищён "Щитом", в этом раунде не считаются
   const eligible = Object.keys(counts).map(k=>parseInt(k)).filter(idx=>!s.p[idx].shield);
   let maxV = -1;
@@ -1755,6 +1995,8 @@ function tallyAndEliminate(s){
   const topCandidates = eligible.filter(idx=>counts[idx]===maxV);
 
   s.vt = new Array(s.p.length).fill(-1);
+  s.outcastVote = {};
+  s.finalVoteOpen = false;
   s.tp = 0;
   s.turnAbilityUsed = false;
   s.p.forEach(pl=>{ pl.shield = false; }); // щит расходуется на один подсчёт голосов, неважно, сработал он или нет
@@ -1907,6 +2149,15 @@ function subscribeRoom(code){
       if(typeof s.revivalUsed !== 'boolean') s.revivalUsed = false;
       if(typeof s.eventChoices !== 'object' || s.eventChoices===null) s.eventChoices = {};
       if(typeof s.outcastChoices !== 'object' || s.outcastChoices===null) s.outcastChoices = {};
+      if(typeof s.outcastVote !== 'object' || s.outcastVote===null) s.outcastVote = {};
+      if(typeof s.finalVoteOpen !== 'boolean') s.finalVoteOpen = false;
+      if(typeof s.refuge !== 'object' || s.refuge===null){
+        s.refuge = { progress:0, found:false, finder:-1, invited:false, jobs:{}, tp:0 };
+      }
+      if(typeof s.refuge.jobs !== 'object' || s.refuge.jobs===null) s.refuge.jobs = {};
+      if(typeof s.refuge.found !== 'boolean') s.refuge.found = false;
+      if(typeof s.refuge.progress !== 'number') s.refuge.progress = 0;
+      if(typeof s.refuge.finder !== 'number') s.refuge.finder = -1;
       if(!Array.isArray(s.eventLog)) s.eventLog = [];
       if(!Array.isArray(s.eventFeed)) s.eventFeed = [];
       if(typeof s.eventFeedSeq !== 'number') s.eventFeedSeq = s.eventFeed.length;
@@ -2344,12 +2595,21 @@ function renderLobby(){
     что делать: <b>Действие</b> (что-то починить, построить, наладить), <b>Сбор</b> (раздобыть припасы,
     рискуя нарваться на опасность) или <b>Атака</b> (встретить угрозу и прикрыть остальных). Исход зависит
     от характеристик игроков, их обязанностей и типа события — кто-то может погибнуть.<br><br>
-    <b>Изгнанники.</b> Игроки, выбывшие ранее по голосованию, не просто наблюдают: в каждой из трёх фаз
-    они решают — помочь оставшимся (небольшой бонус против события, а если кто-то из выживших погибнет —
-    шанс вернуться и занять его место) или вредить им (небольшой штраф выжившим). Так что даже выбывание
-    не означает конец игры.<br><br>
+    <b>Изгнанники.</b> Исключённые голосованием не выбывают окончательно — у них своя линия игры.<br><br>
+    <b>Общий голос.</b> На последнем голосовании, перед распределением обязанностей, изгнанники сообща
+    добавляют один голос против любого из оставшихся. Голос уходит тому, за кого выскажется большинство
+    изгнанников (при равенстве пропадает) — это шанс вытащить наружу того, кто пригодится им самим.<br><br>
+    <b>Помочь или искать своё.</b> В каждой из трёх фаз каждый изгнанник решает: <b>помочь убежищу</b>
+    (небольшой бонус против события, а если кто-то из выживших погибнет — шанс вернуться и занять его
+    место) или <b>искать своё укрытие</b> (штраф выжившим, зато шанс найти второе убежище на поверхности).<br><br>
+    <b>История выживания.</b> Шанс найти укрытие невелик и зависит от профессии, навыка, багажа и здоровья
+    искателей, а также от того, сколько их. Если укрытие найдено, в последнюю ночь нашедший зовёт туда всех
+    изгнанников — и они распределяют между собой уже свои обязанности: кров и тепло, добыча и вода,
+    раны и болезни, дозор и разведка. Шансы дожить до рассвета там заметно ниже, чем в убежище, но они есть,
+    и зависят от того же — характеристик и того, кто за что взялся.<br><br>
     <b>Рассвет.</b> После трёх фаз подводится итог — какие обязанности с чем справились, что происходило
-    по ночам, и выживет ли группа в итоге.<br><br>
+    по ночам, и выживет ли группа в итоге. Если изгнанники нашли своё укрытие, у их истории будет
+    собственный финал.<br><br>
     <span class="tiny">Все данные хранятся в общей базе данных на время игры — это игра на доверии между друзьями, а не защищённая система.</span>
   `}));
   rail.appendChild(rules);
@@ -2863,6 +3123,26 @@ function renderGame(s, code){
       col.appendChild(outcomePanel);
     }
 
+    // ---- Вторая линия финала: что стало с изгнанниками ----
+    if(s.refugeOutcome){
+      const rp = el('div',{class:'panel fade-in-up', 'data-tag':'История выживания'});
+      rp.appendChild(el('div',{class:'verdict-head', text:s.refugeOutcome.tierLabel}));
+      rp.appendChild(el('p',{class:'tiny', style:'margin-bottom:10px;',
+        text:'Укрытие нашёл(ла) '+s.refugeOutcome.finderName+'. В нём укрылись: '+s.refugeOutcome.crewNames.join(', ')+'.'}));
+      if(Array.isArray(s.refugeOutcome.roleLines) && s.refugeOutcome.roleLines.length){
+        const box = el('div',{style:'margin-bottom:12px;'});
+        s.refugeOutcome.roleLines.forEach(line=>box.appendChild(el('p',{class:'tiny', style:'margin:4px 0;', text:line})));
+        rp.appendChild(box);
+      }
+      rp.appendChild(el('p',{style:'line-height:1.7;', text:s.refugeOutcome.text}));
+      col.appendChild(rp);
+    } else if(s.refuge && s.refuge.found === false && outcastIdx(s).length > 0){
+      const rp = el('div',{class:'panel fade-in-up', 'data-tag':'История выживания'});
+      rp.appendChild(el('p',{class:'tiny',
+        text:'Изгнанники так и не нашли второго укрытия. Кто-то до последнего помогал бункеру, кто-то искал спасение сам — но поверхность не оставила им шанса.'}));
+      col.appendChild(rp);
+    }
+
     const dossierPanel = el('div',{class:'panel fade-in-up','data-tag':'Полное досье'});
     const full = document.createElement('div');
     full.className='roster';
@@ -2871,9 +3151,13 @@ function renderGame(s, code){
       const nameRow = el('div',{class:'pname'});
       nameRow.appendChild(el('span',{text:pl.n}));
       const jobId = (s.jobs||{})[i];
+      const refJobId = ((s.refuge||{}).jobs||{})[i];
       if(jobId){
         const role = dutyRoleById(jobId);
         if(role) nameRow.appendChild(el('span',{class:'vote-count', text:role.name}));
+      } else if(refJobId){
+        const role = refugeRoleById(refJobId);
+        if(role) nameRow.appendChild(el('span',{class:'vote-count', style:'color:var(--turn-green)', text:role.name}));
       }
       card.appendChild(nameRow);
       for(let c=0;c<CATS.length;c++) card.appendChild(traitRow(c, pl.v[c], true, false));
@@ -2956,6 +3240,96 @@ function renderGame(s, code){
     return;
   }
 
+  // ---- Последняя ночь изгнанников: распределение обязанностей в найденном укрытии ----
+  if(s.ph==='refuge'){
+    const r = s.refuge || {};
+    const crew = outcastIdx(s);
+    const turnIdx = crew[s.tp] !== undefined ? crew[s.tp] : crew[0];
+    const turnName = s.p[turnIdx] ? s.p[turnIdx].n : '—';
+    document.getElementById('statusLine').textContent = 'последняя ночь · укрытие изгнанников';
+
+    const rBanner = el('div',{class:'turn-banner'});
+    rBanner.appendChild(el('span',{html:'Укрытие изгнанников · распределение · ход: <b>'+turnName+'</b><span class="cursor">_</span>'}));
+    rBanner.appendChild(el('span',{class:'phase-pill', text:'последняя ночь'}));
+    col.appendChild(rBanner);
+
+    const introPanel = el('div',{class:'panel fade-in-up', 'data-tag':'Второе убежище'});
+    introPanel.appendChild(el('div',{class:'alert-ticker', style:'border-left-color:var(--turn-green);',
+      html:'<b>'+(s.p[r.finder] ? s.p[r.finder].n : 'Один из изгнанников')+'</b> нашёл(ла) укрытие на поверхности и позвал(а) туда всех, кого выгнали из бункера. Ни припасов, ни стен, ни плана — только вы и ваши характеристики. Разберите обязанности: от этого зависит, доживёт ли кто-нибудь из вас до рассвета.'}));
+    introPanel.appendChild(el('p',{class:'tiny', style:'margin-top:9px;',
+      text:'В укрытии: '+crew.map(i=>s.p[i].n).join(', ')+'.'}));
+    col.appendChild(introPanel);
+
+    const takenPanel = el('div',{class:'panel fade-in-up', 'data-tag':'Обязанности в укрытии'});
+    const rolesList = el('div',{class:'duty-list'});
+    REFUGE_ROLES.forEach(role=>{
+      const takenIdx = Object.keys(r.jobs||{}).map(Number).find(i=>r.jobs[i]===role.id);
+      const item = el('div',{class:'duty-item'+(takenIdx!==undefined?' taken':'')});
+      const head = el('div',{class:'duty-head'});
+      head.appendChild(el('span',{text:role.name}));
+      head.appendChild(el('span',{class:'vote-count', text: takenIdx!==undefined ? s.p[takenIdx].n : 'свободно'}));
+      item.appendChild(head);
+      item.appendChild(el('p',{class:'tiny', text:role.desc}));
+      rolesList.appendChild(item);
+    });
+    takenPanel.appendChild(rolesList);
+    col.appendChild(takenPanel);
+
+    appendRosterPanel(col, s, myIdx);
+
+    if(myIdx===-1 || !s.p[myIdx].e){
+      col.appendChild(el('div',{class:'panel fade-in-up', 'data-tag':'Наблюдение',
+        html:'<p class="tiny">Ты в бункере — эта ночь разыгрывается без тебя. Изгнанники делят обязанности в найденном укрытии, итог увидишь на финальном экране.</p>'}));
+      return;
+    }
+
+    if(myIdx!==turnIdx){
+      const waitPanel = el('div',{class:'panel fade-in-up', 'data-tag':'Действие'});
+      waitPanel.appendChild(el('p',{class:'tiny', html:'Сейчас выбирает <b>'+turnName+'</b>. Экран обновится сам, когда очередь дойдёт до тебя.'}));
+      col.appendChild(waitPanel);
+      return;
+    }
+
+    const pickPanel = el('div',{class:'panel fade-in-up', 'data-tag':'Твой выбор'});
+    pickPanel.appendChild(ownDossierStrip(s, myIdx));
+    const freeRoles = REFUGE_ROLES.filter(role=>
+      !Object.keys(r.jobs||{}).map(Number).some(i=>r.jobs[i]===role.id));
+
+    if(freeRoles.length===0){
+      pickPanel.appendChild(el('p',{class:'tiny', text:'Все обязанности уже разобраны — тебе остаётся помогать остальным по мере сил.'}));
+      const skipBtn = el('button',{class:'ghost', text:'Дальше'});
+      skipBtn.onclick = ()=>{
+        const next = JSON.parse(JSON.stringify(s));
+        pushLog(next, '🕯 '+s.p[myIdx].n+' остаётся без закреплённой обязанности в укрытии.', 'system');
+        advanceAfterRefugeAssign(next);
+        pushState(next);
+      };
+      pickPanel.appendChild(skipBtn);
+    } else {
+      pickPanel.appendChild(el('p',{text:'Что берёшь на себя в укрытии?'}));
+      const grid = el('div',{class:'cat-btn-grid'});
+      freeRoles.forEach(role=>{
+        const b = el('button',{class:'cat-btn'});
+        b.appendChild(el('span',{class:'bk', text:role.name}));
+        b.appendChild(el('span',{class:'bv', text:role.desc}));
+        b.title = role.desc;
+        b.onclick = ()=>{
+          const next = JSON.parse(JSON.stringify(s));
+          next.refuge = next.refuge || {};
+          next.refuge.jobs = next.refuge.jobs || {};
+          next.refuge.jobs[myIdx] = role.id;
+          pushLog(next, '🕯 '+s.p[myIdx].n+' берёт на себя в укрытии: '+role.name+'.', 'system');
+          advanceAfterRefugeAssign(next);
+          pushState(next);
+        };
+        grid.appendChild(b);
+      });
+      pickPanel.appendChild(grid);
+    }
+    col.appendChild(pickPanel);
+    return;
+  }
+
   if(s.ph==='event'){
     document.body.classList.remove('vote-mode');
     const event = s.currentEvent || EVENT_POOL[0];
@@ -2980,16 +3354,23 @@ function renderGame(s, code){
     // ---- Изгнанники (выбывшие раньше по голосованию): у них своя, не привязанная
     // к общей очереди, возможность помочь оставшимся или навредить им в этой фазе ----
     if(s.p[myIdx].e){
+      const r = s.refuge || {};
       const outcastPanel = el('div',{class:'panel fade-in-up', 'data-tag':'Ты вне поселения'});
       const already = s.outcastChoices && s.outcastChoices[myIdx];
+
+      if(r.found){
+        outcastPanel.appendChild(el('div',{class:'alert-ticker', style:'border-left-color:var(--turn-green); margin-bottom:10px;',
+          html:'<b>УКРЫТИЕ НАЙДЕНО.</b> '+(s.p[r.finder] ? s.p[r.finder].n : 'Кто-то из ваших')+' отыскал(а) место на поверхности. В последнюю ночь туда позовут всех изгнанников.'}));
+      }
+
       if(already){
         outcastPanel.appendChild(el('p',{class:'tiny', text: already==='help'
-          ? 'Ты решил(а) помочь оставшимся в этой фазе. Если кто-то из них погибнет, у тебя есть шанс вернуться и занять его место.'
-          : 'Ты решил(а) вредить оставшимся в этой фазе — это усложнит им жизнь.'
+          ? 'Ты решил(а) помочь оставшимся в этой фазе. Если кто-то из них погибнет, у тебя есть шанс вернуться и занять его место в убежище.'
+          : 'Ты ушёл(ушла) искать своё укрытие. Оставшимся от этого не легче, зато у изгнанников появляется шанс на собственное спасение.'
         }));
       } else {
         outcastPanel.appendChild(el('p',{text:'Тебя исключили голосованием, но игра для тебя не окончена. Реши, что делать в эту фазу:'}));
-        const helpBtn = el('button',{class:'primary', text:'Помочь'});
+        const helpBtn = el('button',{class:'primary', text:'Помочь убежищу'});
         helpBtn.title = 'Небольшой бонус выжившим против события. Если кто-то погибнет, у тебя есть шанс занять его место.';
         helpBtn.onclick = ()=>{
           const next = JSON.parse(JSON.stringify(s));
@@ -2997,16 +3378,18 @@ function renderGame(s, code){
           next.outcastChoices[myIdx] = 'help';
           pushState(next);
         };
-        const harmBtn = el('button',{class:'danger', style:'margin-left:10px;', text:'Вредить'});
-        harmBtn.title = 'Небольшой штраф выжившим — усложняешь им выживание, но сам(а) уже не сможешь вернуться в этой фазе.';
-        harmBtn.onclick = ()=>{
+        const seekBtn = el('button',{class:'danger', style:'margin-left:10px;', text:'Искать своё укрытие'});
+        seekBtn.title = 'Выжившим станет тяжелее, зато есть шанс найти второе убежище — и в последнюю ночь позвать туда всех изгнанников.';
+        seekBtn.onclick = ()=>{
           const next = JSON.parse(JSON.stringify(s));
           next.outcastChoices = next.outcastChoices || {};
-          next.outcastChoices[myIdx] = 'sabotage';
+          next.outcastChoices[myIdx] = 'search';
           pushState(next);
         };
         outcastPanel.appendChild(helpBtn);
-        outcastPanel.appendChild(harmBtn);
+        outcastPanel.appendChild(seekBtn);
+        outcastPanel.appendChild(el('p',{class:'tiny', style:'margin-top:10px;',
+          text:'Шанс найти укрытие зависит от твоих характеристик — профессии, навыка, багажа и здоровья. Чем больше изгнанников ищут, тем выше общий шанс.'}));
       }
       col.appendChild(outcastPanel);
       return;
@@ -3111,7 +3494,39 @@ function renderGame(s, code){
   col.appendChild(actionPanel);
 
   if(iAmEliminated){
-    actionArea.appendChild(el('p',{class:'tiny', text:'Ты выбыл(а) из игры. Можешь наблюдать за дальнейшим развитием событий, но действий больше нет.'}));
+    if(s.ph==='vote' && s.finalVoteOpen){
+      const myVote = (s.outcastVote||{})[myIdx];
+      const collective = outcastCollectiveTarget(s);
+      const crew = outcastIdx(s);
+      const cast = crew.filter(i=>typeof (s.outcastVote||{})[i]==='number');
+
+      actionArea.appendChild(el('div',{class:'alert-ticker', style:'border-left-color:var(--card-own); margin-bottom:12px;',
+        html:'<b>ОБЩИЙ ГОЛОС ИЗГНАННИКОВ.</b> Это последнее голосование. Вы вместе добавляете один голос против любого из оставшихся — выбирайте того, кто пригодится вам самим снаружи. Голос уходит тому, за кого выскажется большинство изгнанников; при равенстве голос пропадает.'}));
+
+      actionArea.appendChild(el('p',{class:'tiny', style:'margin-bottom:8px;',
+        text:'Высказались: '+cast.length+' из '+crew.length+'. Сейчас большинство за: '+(collective!==null ? s.p[collective].n : '— согласия нет')}));
+
+      const grid = el('div',{class:'cat-btn-grid'});
+      activeIdx(s).forEach(i=>{
+        const chosenNow = myVote === i;
+        const b = el('button',{class:'cat-btn'+(chosenNow?' primary':'')});
+        b.appendChild(el('span',{class:'bk', text:s.p[i].n}));
+        const votesFor = crew.filter(k=>(s.outcastVote||{})[k]===i).length;
+        b.appendChild(el('span',{class:'bv', text: votesFor>0 ? votesFor+' голос(а) изгнанников' : 'нет голосов'}));
+        b.onclick = ()=>{
+          const next = JSON.parse(JSON.stringify(s));
+          next.outcastVote = next.outcastVote || {};
+          next.outcastVote[myIdx] = i;
+          pushLog(next, '🕯 '+s.p[myIdx].n+' (изгнанник) склоняется к тому, чтобы вытащить наружу игрока '+s.p[i].n+'.', 'vote');
+          pushState(next);
+        };
+        grid.appendChild(b);
+      });
+      actionArea.appendChild(grid);
+      actionArea.appendChild(el('p',{class:'tiny', text:'Пока живые голосуют, свой выбор можно менять — он учтётся в момент подсчёта.'}));
+      return;
+    }
+    actionArea.appendChild(el('p',{class:'tiny', text:'Ты выбыл(а) из голосований, но игра для тебя не окончена: в фазах событий ты решишь, помогать убежищу или искать своё укрытие на поверхности.'}));
     return;
   }
 
