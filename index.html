@@ -69,17 +69,17 @@
     z-index:0; pointer-events:none; opacity:.6; mix-blend-mode:screen;
   }
   .scanline-sweep{
-    position:fixed; left:0; right:0; height:160px; top:-160px;
+    position:fixed; left:0; right:0; height:90px; top:-90px;
     background:linear-gradient(180deg,
       transparent,
-      rgba(99,216,208,0.06) 28%,
-      rgba(190,255,250,0.4) 50%,
-      rgba(99,216,208,0.06) 72%,
+      rgba(99,216,208,0.025) 32%,
+      rgba(190,255,250,0.16) 50%,
+      rgba(99,216,208,0.025) 68%,
       transparent);
     pointer-events:none; z-index:1;
     animation:sweep 8s linear infinite;
   }
-  @keyframes sweep{0%{top:-140px;} 100%{top:100%;}}
+  @keyframes sweep{0%{top:-90px;} 100%{top:100%;}}
   header.top, main, footer{position:relative; z-index:2;}
 
   .vote-alert-frame{
@@ -185,14 +185,18 @@
   @keyframes glyphGlitch{
     0%,92%,100%{ transform:rotate(45deg) translate(0,0); filter:none; }
     93%{ transform:rotate(45deg) translate(-4px,1px);
-         filter:drop-shadow(3px 0 0 rgba(255,45,90,.75)) drop-shadow(-3px 0 0 rgba(33,230,255,.75)); }
+         filter:drop-shadow(3px 0 0 rgba(255,59,59,.75)) drop-shadow(-3px 0 0 rgba(255,176,32,.75)); }
     94%{ transform:rotate(45deg) translate(3px,-2px); }
     95%{ transform:rotate(45deg) translate(-2px,2px);
-         filter:drop-shadow(-3px 0 0 rgba(255,45,90,.75)) drop-shadow(3px 0 0 rgba(33,230,255,.75)); }
+         filter:drop-shadow(-3px 0 0 rgba(255,59,59,.75)) drop-shadow(3px 0 0 rgba(255,176,32,.75)); }
     96%{ transform:rotate(45deg) translate(0,0); filter:none; }
   }
   .landing-title{
     position:relative;
+    display:flex;
+    flex-wrap:wrap;
+    justify-content:center;
+    gap:0.28em;
     font-family:'Russo One','Oswald',sans-serif;
     font-weight:400;
     text-transform:uppercase;
@@ -204,19 +208,26 @@
     max-width:92vw;
     animation: lampFlicker 5s infinite;
   }
-  .landing-title::before,
-  .landing-title::after{
+  .landing-title .lt-part{
+    position:relative;
+    display:inline-block;
+  }
+  .landing-title .lt-part.accent{
+    color:var(--red-alert);
+  }
+  .landing-title .lt-part::before,
+  .landing-title .lt-part::after{
     content:attr(data-text);
     position:absolute; left:0; top:0; width:100%;
     pointer-events:none;
   }
-  .landing-title::before{
-    color:#ff2d55;
+  .landing-title .lt-part::before{
+    color:#ff3b3b;
     mix-blend-mode:screen;
     animation: glitchSlideA 3.2s infinite linear;
   }
-  .landing-title::after{
-    color:#21e6ff;
+  .landing-title .lt-part::after{
+    color:#ffb020;
     mix-blend-mode:screen;
     animation: glitchSlideB 4.1s infinite linear;
   }
@@ -232,7 +243,7 @@
     76%{ opacity:.55; }
     77%{ opacity:1; }
   }
-  /* Красный и голубой "каналы" почти всё время не видны и коротко проступают
+  /* Красный и янтарный "каналы" почти всё время не видны и коротко проступают
      горизонтальными вырезанными полосами со сдвигом — классический сбой цифрового сигнала. */
   @keyframes glitchSlideA{
     0%,89%,100%{ clip-path:inset(0 0 0 0); transform:translate(0,0); opacity:0; }
@@ -262,8 +273,15 @@
     padding:16px 42px;
     letter-spacing:3px;
   }
+  /* Верхнюю служебную полосу и шапку с названием прячем на главной странице —
+     название там и так есть, крупно, в самом заголовке. Показываются только
+     после нажатия «Начать игру» (renderLobby и все игровые экраны). */
+  body.hide-chrome .hazard,
+  body.hide-chrome header.top{
+    display:none;
+  }
   @media (prefers-reduced-motion: reduce){
-    .landing-title, .landing-title::before, .landing-title::after,
+    .landing-title, .landing-title .lt-part::before, .landing-title .lt-part::after,
     .landing-mark .mark-glyph.big{ animation:none !important; opacity:1; }
   }
 
@@ -2672,6 +2690,7 @@ function renderRoomMissing(code){
 function renderLanding(){
   document.getElementById('statusLine').textContent = 'готов к подключению';
   document.body.classList.remove('vote-mode');
+  document.body.classList.add('hide-chrome'); // верхнюю шапку с названием прячем — до кнопки «Начать игру»
   setVfx(null);
   const app = document.getElementById('app');
   app.innerHTML = '';
@@ -2684,11 +2703,17 @@ function renderLanding(){
   mark.appendChild(glyph);
   landing.appendChild(mark);
 
-  landing.appendChild(el('h1',{class:'landing-title', 'data-text':'ПРОТОКОЛ РАССВЕТ', text:'ПРОТОКОЛ РАССВЕТ'}));
+  const title = el('h1',{class:'landing-title'});
+  title.appendChild(el('span',{class:'lt-part', 'data-text':'ПРОТОКОЛ:', text:'ПРОТОКОЛ:'}));
+  title.appendChild(el('span',{class:'lt-part accent', 'data-text':'РАССВЕТ', text:'РАССВЕТ'}));
+  landing.appendChild(title);
   landing.appendChild(el('p',{class:'landing-tag', text:'Мест в убежище меньше, чем претендентов'}));
 
   const startBtn = el('button',{class:'primary landing-start', text:'Начать игру'});
-  startBtn.onclick = ()=>{ renderLobby(); };
+  startBtn.onclick = ()=>{
+    document.body.classList.remove('hide-chrome');
+    renderLobby();
+  };
   landing.appendChild(startBtn);
 
   app.appendChild(landing);
