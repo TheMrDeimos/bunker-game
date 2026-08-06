@@ -66,13 +66,18 @@
   /* ---------- фоновые слои ---------- */
   #vfxCanvas{
     position:fixed; inset:0; width:100%; height:100%;
-    z-index:0; pointer-events:none; opacity:.4; mix-blend-mode:screen;
+    z-index:0; pointer-events:none; opacity:.6; mix-blend-mode:screen;
   }
   .scanline-sweep{
-    position:fixed; left:0; right:0; height:140px; top:-140px;
-    background:linear-gradient(180deg, transparent, rgba(99,216,208,0.035), transparent);
+    position:fixed; left:0; right:0; height:160px; top:-160px;
+    background:linear-gradient(180deg,
+      transparent,
+      rgba(99,216,208,0.06) 28%,
+      rgba(190,255,250,0.4) 50%,
+      rgba(99,216,208,0.06) 72%,
+      transparent);
     pointer-events:none; z-index:1;
-    animation:sweep 9s linear infinite;
+    animation:sweep 8s linear infinite;
   }
   @keyframes sweep{0%{top:-140px;} 100%{top:100%;}}
   header.top, main, footer{position:relative; z-index:2;}
@@ -158,6 +163,110 @@
   }
   body.vote-mode .mark-glyph{border-color:var(--red-alert);}
   body.vote-mode .mark-glyph i{background:var(--red-alert);}
+
+  /* ---------- главная страница: мигающая лампа + киберпанк-искажение лого ---------- */
+  .landing{
+    min-height:65vh;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    text-align:center;
+    gap:20px;
+    padding:40px 20px;
+  }
+  .landing-mark .mark-glyph.big{
+    width:70px; height:70px; flex:0 0 70px;
+    border-width:3px;
+    margin-bottom:4px;
+    animation: glyphGlitch 6s infinite;
+  }
+  .landing-mark .mark-glyph.big i{ width:19px; height:19px; }
+  @keyframes glyphGlitch{
+    0%,92%,100%{ transform:rotate(45deg) translate(0,0); filter:none; }
+    93%{ transform:rotate(45deg) translate(-4px,1px);
+         filter:drop-shadow(3px 0 0 rgba(255,45,90,.75)) drop-shadow(-3px 0 0 rgba(33,230,255,.75)); }
+    94%{ transform:rotate(45deg) translate(3px,-2px); }
+    95%{ transform:rotate(45deg) translate(-2px,2px);
+         filter:drop-shadow(-3px 0 0 rgba(255,45,90,.75)) drop-shadow(3px 0 0 rgba(33,230,255,.75)); }
+    96%{ transform:rotate(45deg) translate(0,0); filter:none; }
+  }
+  .landing-title{
+    position:relative;
+    font-family:'Russo One','Oswald',sans-serif;
+    font-weight:400;
+    text-transform:uppercase;
+    font-size:clamp(36px,9vw,88px);
+    line-height:1.06;
+    letter-spacing:4px;
+    color:var(--paper);
+    margin:0;
+    max-width:92vw;
+    animation: lampFlicker 5s infinite;
+  }
+  .landing-title::before,
+  .landing-title::after{
+    content:attr(data-text);
+    position:absolute; left:0; top:0; width:100%;
+    pointer-events:none;
+  }
+  .landing-title::before{
+    color:#ff2d55;
+    mix-blend-mode:screen;
+    animation: glitchSlideA 3.2s infinite linear;
+  }
+  .landing-title::after{
+    color:#21e6ff;
+    mix-blend-mode:screen;
+    animation: glitchSlideB 4.1s infinite linear;
+  }
+  /* Мерцание лампы: неравномерные провалы яркости, а не ровная пульсация —
+     ближе к живой люминесцентной лампе, чем к дыханию/пульсу. */
+  @keyframes lampFlicker{
+    0%,18%,20%,22%,58%,60%,75%,100%{
+      opacity:1; text-shadow:0 0 22px rgba(200,52,42,.55), 0 0 55px rgba(200,52,42,.22);
+    }
+    19%{ opacity:.35; text-shadow:none; }
+    21%{ opacity:.85; }
+    59%{ opacity:.45; text-shadow:none; }
+    76%{ opacity:.55; }
+    77%{ opacity:1; }
+  }
+  /* Красный и голубой "каналы" почти всё время не видны и коротко проступают
+     горизонтальными вырезанными полосами со сдвигом — классический сбой цифрового сигнала. */
+  @keyframes glitchSlideA{
+    0%,89%,100%{ clip-path:inset(0 0 0 0); transform:translate(0,0); opacity:0; }
+    90%{ clip-path:inset(10% 0 60% 0); transform:translate(-6px,0); opacity:.8; }
+    91%{ clip-path:inset(55% 0 10% 0); transform:translate(4px,0); opacity:.75; }
+    92%{ clip-path:inset(20% 0 40% 0); transform:translate(-3px,0); opacity:.7; }
+    93%{ opacity:0; }
+  }
+  @keyframes glitchSlideB{
+    0%,84%,100%{ clip-path:inset(0 0 0 0); transform:translate(0,0); opacity:0; }
+    85%{ clip-path:inset(40% 0 20% 0); transform:translate(5px,0); opacity:.8; }
+    86%{ clip-path:inset(5% 0 70% 0); transform:translate(-4px,0); opacity:.75; }
+    87%{ clip-path:inset(65% 0 5% 0); transform:translate(3px,0); opacity:.7; }
+    88%{ opacity:0; }
+  }
+  .landing-tag{
+    font-family:'Oswald',sans-serif;
+    letter-spacing:3px;
+    text-transform:uppercase;
+    font-size:12.5px;
+    color:var(--muted);
+    margin:0;
+  }
+  .landing-start{
+    margin-top:14px;
+    font-size:15px;
+    padding:16px 42px;
+    letter-spacing:3px;
+  }
+  @media (prefers-reduced-motion: reduce){
+    .landing-title, .landing-title::before, .landing-title::after,
+    .landing-mark .mark-glyph.big{ animation:none !important; opacity:1; }
+  }
+
   h1.brand{
     font-family:'Russo One', 'Oswald', sans-serif;
     font-weight:400;
@@ -2460,15 +2569,15 @@ function resizeVfx(){
 }
 function seedParticles(type){
   const W = vfxCanvasEl.width, H = vfxCanvasEl.height;
-  const count = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 70;
+  const count = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 110;
   vfxParticles = [];
   for(let i=0;i<count;i++){
     vfxParticles.push({
       x:Math.random()*W, y:Math.random()*H,
-      r:Math.random()*2.4+0.8,
+      r:Math.random()*2.8+1,
       vy:Math.random()*0.6+0.3,
       vx:(Math.random()-0.5)*0.4,
-      alpha:Math.random()*0.6+0.3,
+      alpha:Math.random()*0.55+0.4,
       phase:Math.random()*Math.PI*2
     });
   }
@@ -2558,6 +2667,31 @@ function renderRoomMissing(code){
   btn.onclick = ()=>{ history.replaceState(null,'', location.pathname); renderLobby(); };
   panel.appendChild(btn);
   app.appendChild(panel);
+}
+
+function renderLanding(){
+  document.getElementById('statusLine').textContent = 'готов к подключению';
+  document.body.classList.remove('vote-mode');
+  setVfx(null);
+  const app = document.getElementById('app');
+  app.innerHTML = '';
+
+  const landing = el('div',{class:'landing'});
+
+  const mark = el('div',{class:'landing-mark'});
+  const glyph = el('div',{class:'mark-glyph big'});
+  glyph.appendChild(el('i'));
+  mark.appendChild(glyph);
+  landing.appendChild(mark);
+
+  landing.appendChild(el('h1',{class:'landing-title', 'data-text':'ПРОТОКОЛ РАССВЕТ', text:'ПРОТОКОЛ РАССВЕТ'}));
+  landing.appendChild(el('p',{class:'landing-tag', text:'Мест в убежище меньше, чем претендентов'}));
+
+  const startBtn = el('button',{class:'primary landing-start', text:'Начать игру'});
+  startBtn.onclick = ()=>{ renderLobby(); };
+  landing.appendChild(startBtn);
+
+  app.appendChild(landing);
 }
 
 function renderLobby(){
@@ -3885,7 +4019,7 @@ function boot(){
   if(room){
     subscribeRoom(room.toUpperCase());
   } else {
-    renderLobby();
+    renderLanding();
   }
 }
 
