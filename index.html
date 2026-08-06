@@ -970,12 +970,12 @@ const firebaseConfig = {
 // индексы 6,7,8,9,10 — пол / репродуктивность / возраст / рост и вес / ориентация
 // (генерируются независимо, без требования уникальности между игроками)
 // индексы 0-5 — обычные "пуловые" характеристики (уникальны на игрока в рамках комнаты)
-// индексы 6-8 — пол, возраст, ориентация (генерируются независимо). Чтобы не увеличивать
+// индексы 6-8 — биоданные, параметры, ориентация (генерируются независимо). Чтобы не увеличивать
 // число раундов раскрытия, дополнительные детали (репродуктивность, рост/вес) не выделены
-// в отдельные категории, а склеены в значение "Пол" и "Возраст" через " / ".
+// в отдельные категории, а склеены в значение "Биоданные" и "Параметры" через " / ".
 const CATS = [
   "Профессия","Состояние здоровья","Хобби / навык","Фобия","Личный багаж","Секрет",
-  "Пол","Возраст","Ориентация"
+  "Биоданные","Параметры","Ориентация"
 ];
 const POOL_CAT_IDX = [0,1,2,3,4,5];
 const GENDERS = ["Мужской","Женский","Робот-андроид","Инопланетянин(-ка)","Мутант","Небинарный","Неопределённый пол"];
@@ -1317,6 +1317,14 @@ function computeFinalOutcome(s){
     eventLines.push('Фаза '+ev.phase+': '+ev.note);
   });
 
+  // Прирученные во время вылазок животные — небольшой, но честно заработанный бонус
+  // к общим шансам убежища; остаются на счету группы, даже если приручивший позже погиб.
+  const tamed = Array.isArray(s.tamedAnimals) ? s.tamedAnimals : [];
+  tamed.forEach(t=>{
+    score += 2;
+    roleLines.push('Приручённое животное — '+t.animal+': '+t.bonusText+'.');
+  });
+
   const tier = OUTCOME_TIERS.find(t=>score>=t.min) || OUTCOME_TIERS[OUTCOME_TIERS.length-1];
   return { score, tierLabel: tier.label, text: pick(tier.texts), roleLines, eventLines };
 }
@@ -1375,6 +1383,59 @@ function computeOutcastModifier(s){
   let mod = 0;
   Object.values(choices).forEach(c=>{ if(c==='help') mod += 1; else if(c==='sabotage') mod -= 1; });
   return mod;
+}
+
+/* ---------------- Дикие животные во время вылазок ----------------
+   Игрок, выбравший на своём ходу действие «Сбор» (вылазка за припасами),
+   может встретить дикое животное. Профессия/навык, объективно связанные
+   с животными, дают гарантированное приручение; у остальных — шанс на удачу.
+   Приручённое животное остаётся при убежище и даёт бонус к общему исходу,
+   неудача оставляет след на здоровье того, кто пытался приручить. */
+const ANIMAL_POOL = [
+  { name:"Одичавшая собака", tame:"пёс стал верным сторожем убежища" },
+  { name:"Дикая кошка", tame:"кошка взяла на себя охоту на грызунов в убежище" },
+  { name:"Раненый козёл", tame:"козёл прижился у убежища и стал источником молока" },
+  { name:"Ручной ворон", tame:"ворон повадился поднимать тревогу при чужаках у входа" },
+  { name:"Одичавшая курица", tame:"курица исправно несёт яйца для общего стола" },
+  { name:"Молодой волк", tame:"волк присоединился к дозору на периметре" },
+  { name:"Дикий кабан", tame:"кабан стал источником мяса на самый чёрный день" },
+  { name:"Потерявшийся пони", tame:"пони помогает перевозить тяжёлые находки"}
+];
+// Профессии/навыки, которые дают 100% шанс приручения — люди, которые объективно
+// умеют обращаться с животными, а не полагаются на удачу.
+const TAME_GUARANTEED_PROF = ["Ветеринар","Кинолог","Фермер"];
+const TAME_GUARANTEED_HOBBY = ["Дрессировка животных","Охота и разделка дичи","Выживание в лесу"];
+// Неудачное приручение оставляет след на здоровье — животное дикое и может напугать,
+// оцарапать или укусить. Заменяем состояние здоровья на один из этих исходов.
+const TAME_INJURY_POOL = [
+  "Укушен(а) диким животным, рана понемногу воспаляется",
+  "Глубокие царапины от когтей",
+  "Испуг спровоцировал приступ панической атаки",
+  "Потянул(а) мышцу, отбиваясь от животного",
+  "Лёгкое заражение от укуса, поднялась температура",
+  "Ушиб от удара копытом"
+];
+const ANIMAL_ENCOUNTER_CHANCE = 0.3; // не каждая вылазка приводит к встрече
+const ANIMAL_TAME_BASE_CHANCE = 0.35; // шанс без подходящей профессии/навыка
+
+// Пробует разыграть встречу с животным для одного игрока, выбравшего «Сбор».
+// Возвращает null, если встречи не произошло, иначе — результат для хроники событий.
+function maybeEncounterAnimal(s, idx){
+  if(Math.random() >= ANIMAL_ENCOUNTER_CHANCE) return null;
+  const pl = s.p[idx];
+  const animal = pick(ANIMAL_POOL);
+  const guaranteed = TAME_GUARANTEED_PROF.includes(pl.v[0]) || TAME_GUARANTEED_HOBBY.includes(pl.v[2]);
+  const success = guaranteed || Math.random() < ANIMAL_TAME_BASE_CHANCE;
+  if(success){
+    s.tamedAnimals = s.tamedAnimals || [];
+    s.tamedAnimals.push({ idx, name:pl.n, animal:animal.name, bonusText:animal.tame });
+    return { success:true, kind:'reveal',
+      text:'🐾 '+pl.n+' во время вылазки встретил(а) '+animal.name.toLowerCase()+' и '+(guaranteed?'без труда приручил(а) его':'сумел(а) его приручить')+' — теперь '+animal.tame+'.' };
+  }
+  const injury = pick(TAME_INJURY_POOL);
+  pl.v[1] = injury;
+  return { success:false, kind:'vote',
+    text:'🐾 '+pl.n+' во время вылазки встретил(а) '+animal.name.toLowerCase()+', но приручить не вышло: '+injury.toLowerCase()+'.' };
 }
 
 function startEventPhase(s){
@@ -1475,6 +1536,15 @@ function resolveEventPhase(s){
 
   casualties.forEach(idx=>{ s.p[idx].e = true; s.p[idx].r = ALL_CATS_MASK; });
 
+  // Дикие встречи во время вылазок за припасами — только для тех, кто выбрал «Сбор»
+  // и дожил до конца этой фазы (мёртвым уже не до приручения животных).
+  survivors.forEach(i=>{
+    if(casualties.includes(i)) return;
+    if((choices[i] || 'action') !== 'gather') return;
+    const encounter = maybeEncounterAnimal(s, i);
+    if(encounter) pushLog(s, encounter.text, encounter.kind);
+  });
+
   const successCount = results.filter(r=>r.success).length;
   let narrative = '«'+event.text+'» — ';
   if(casualties.length>0 && revived){
@@ -1492,7 +1562,7 @@ function resolveEventPhase(s){
 }
 
 
-/* ---------------- Режим «История выживания» ----------------
+/* ---------------- Режим «Внешний протокол» ----------------
    Исключённые голосованием не выбывают из игры окончательно. У них своя линия:
    1) на ПОСЛЕДНЕМ голосовании они сообща отдают один коллективный голос —
       это шанс вытащить наружу того, кто будет полезен им самим;
@@ -1778,7 +1848,22 @@ const ABILITIES = [
     type:"extend_reveal_long", phase:"reveal" },
   { id:15, name:"Второе дыхание",
     desc:"Раскрыть для всех ещё одну свою скрытую характеристику дополнительно к обычному ходу.",
-    type:"reveal_self_extra" }
+    type:"reveal_self_extra" },
+  { id:16, name:"Тайник",
+    desc:"Найти ещё один личный предмет — добавляет второй, отдельный пункт к твоему личному багажу.",
+    type:"gain_second_item" },
+  { id:17, name:"Замести следы",
+    desc:"Скрыть обратно одну свою уже раскрытую характеристику — для всех остальных она снова становится тайной.",
+    type:"hide_self_revealed" },
+  { id:18, name:"Чужие тайны",
+    desc:"Незаметно организовать обмен одной скрытой характеристикой между двумя ДРУГИМИ игроками — сам(а) в обмене не участвуешь.",
+    type:"swap_trait_others" },
+  { id:19, name:"Полное дело",
+    desc:"Узнать сразу все ещё скрытые характеристики одного выбранного игрока — только для себя, без раскрытия остальным.",
+    type:"peek_other_all" },
+  { id:20, name:"Разоблачение защиты",
+    desc:"Только во время голосования: снять действие уже активированного щита у выбранного игрока перед подсчётом голосов.",
+    type:"pierce_shield", phase:"vote" }
 ];
 function abilityById(id){ return ABILITIES.find(a=>a.id===id); }
 
@@ -1862,6 +1947,7 @@ function makeGame(names){
     eventLog:[],
     usedEventIdx:[],
     revivalUsed:false,
+    tamedAnimals:[],
     eventFeed:[],
     eventFeedSeq:0,
     schemaVersion: CURRENT_SCHEMA_VERSION
@@ -2160,6 +2246,7 @@ function subscribeRoom(code){
       if(typeof s.refuge.finder !== 'number') s.refuge.finder = -1;
       if(!Array.isArray(s.eventLog)) s.eventLog = [];
       if(!Array.isArray(s.eventFeed)) s.eventFeed = [];
+      if(!Array.isArray(s.tamedAnimals)) s.tamedAnimals = [];
       if(typeof s.eventFeedSeq !== 'number') s.eventFeedSeq = s.eventFeed.length;
       s.schemaVersion = CURRENT_SCHEMA_VERSION;
       db.ref('rooms/'+code).update({
@@ -2575,7 +2662,7 @@ function renderLobby(){
     и от ${MIN_PLAYERS} до ${MAX_PLAYERS} претендентов. Число мест зависит от того, сколько всего игроков
     участвует: 4→2, 5→3, 6→3, 7→3, 8→4, 9→4, 10→5.<br><br>
     <b>Раскрытие.</b> На своём ходу игрок сам решает, какую из ещё скрытых характеристик показать всем
-    (профессия, здоровье, хобби, фобия, багаж, секрет, пол, возраст, ориентация).<br><br>
+    (профессия, здоровье, хобби, фобия, багаж, секрет, биоданные, параметры, ориентация).<br><br>
     <b>Цикл игры.</b> Число раундов раскрытия перед каждым голосованием подстраивается под то, сколько
     всего исключений нужно провести: чем меньше игроков придётся выгнать, тем длиннее и содержательнее
     будет каждый цикл раскрытия.<br><br>
@@ -2595,6 +2682,10 @@ function renderLobby(){
     что делать: <b>Действие</b> (что-то починить, построить, наладить), <b>Сбор</b> (раздобыть припасы,
     рискуя нарваться на опасность) или <b>Атака</b> (встретить угрозу и прикрыть остальных). Исход зависит
     от характеристик игроков, их обязанностей и типа события — кто-то может погибнуть.<br><br>
+    <b>Дикие животные.</b> Тот, кто выбрал «Сбор», иногда встречает на вылазке дикое животное. С подходящей
+    профессией или навыком (ветеринар, кинолог, фермер, дрессировка животных, охота, выживание в лесу)
+    приручение гарантировано; у остальных — только шанс. Приручённое животное остаётся при убежище и
+    немного повышает общие шансы выжить, а неудачная попытка оставляет след на здоровье того, кто пытался.<br><br>
     <b>Изгнанники.</b> Исключённые голосованием не выбывают окончательно — у них своя линия игры.<br><br>
     <b>Общий голос.</b> На последнем голосовании, перед распределением обязанностей, изгнанники сообща
     добавляют один голос против любого из оставшихся. Голос уходит тому, за кого выскажется большинство
@@ -2602,7 +2693,7 @@ function renderLobby(){
     <b>Помочь или искать своё.</b> В каждой из трёх фаз каждый изгнанник решает: <b>помочь убежищу</b>
     (небольшой бонус против события, а если кто-то из выживших погибнет — шанс вернуться и занять его
     место) или <b>искать своё укрытие</b> (штраф выжившим, зато шанс найти второе убежище на поверхности).<br><br>
-    <b>История выживания.</b> Шанс найти укрытие невелик и зависит от профессии, навыка, багажа и здоровья
+    <b>Внешний протокол.</b> Шанс найти укрытие невелик и зависит от профессии, навыка, багажа и здоровья
     искателей, а также от того, сколько их. Если укрытие найдено, в последнюю ночь нашедший зовёт туда всех
     изгнанников — и они распределяют между собой уже свои обязанности: кров и тепло, добыча и вода,
     раны и болезни, дозор и разведка. Шансы дожить до рассвета там заметно ниже, чем в убежище, но они есть,
@@ -3027,6 +3118,143 @@ function buildAbilityForm(container, ab, s, myIdx){
         '💨 '+s.p[myIdx].n+' дополнительно раскрыл(а) через «Второе дыхание»: '+CATS[ci]+' = «'+s.p[myIdx].v[ci]+'».');
     };
     container.appendChild(btn);
+
+  } else if(ab.type==='gain_second_item'){
+    const already = (s.p[myIdx].v[4]||'').indexOf(' / ') !== -1;
+    if(already){
+      container.appendChild(el('p',{class:'tiny', text:'У тебя уже два предмета в личном багаже — тайник пуст.'}));
+      return;
+    }
+    container.appendChild(el('p',{class:'tiny', text:'В убежище находится ещё один предмет, который можно оставить себе. Он добавится вторым пунктом к твоему личному багажу.'}));
+    const btn = el('button',{class:'primary', text:'Забрать находку'});
+    btn.onclick = ()=>{
+      confirmAndApply(next=>{
+        // Собираем все уже занятые предметы (и первые, и вторые пункты у всех), чтобы находка была уникальной
+        const used = [];
+        next.p.forEach(pl=>{ (pl.v[4]||'').split(' / ').forEach(part=>{ if(part) used.push(part); }); });
+        const candidates = POOLS[4].filter(item=>!used.includes(item));
+        const found = candidates.length ? pick(candidates) : pick(POOLS[4]);
+        next.p[myIdx].v[4] = next.p[myIdx].v[4] + ' / ' + found;
+      }, '🎒 '+s.p[myIdx].n+' нашёл(ла) в убежище ещё один личный предмет (что именно — остаётся скрытым).');
+    };
+    container.appendChild(btn);
+
+  } else if(ab.type==='hide_self_revealed'){
+    const mask = s.p[myIdx].r;
+    const revealed = [];
+    for(let c=0;c<CATS.length;c++){ if((mask>>c)&1) revealed.push(c); }
+    if(revealed.length===0){
+      container.appendChild(el('p',{class:'tiny', text:'У тебя пока нет ни одной раскрытой характеристики — прятать нечего.'}));
+      return;
+    }
+    container.appendChild(el('p',{class:'tiny', text:'Остальные забудут то, что уже видели — но твои собственные записи об их данных это не затронет.'}));
+    const catSel = el('select');
+    catSel.appendChild(el('option',{value:'', text:'Какую характеристику скрыть обратно?'}));
+    revealed.forEach(c=>catSel.appendChild(el('option',{value:c, text:CATS[c]})));
+    container.appendChild(catSel);
+    const btn = el('button',{class:'danger', text:'Замести следы'});
+    btn.onclick = ()=>{
+      const ci = parseInt(catSel.value);
+      if(isNaN(ci)) return;
+      confirmAndApply(next=>{
+        next.p[myIdx].r = next.p[myIdx].r & ~(1<<ci);
+      }, '🕳 '+s.p[myIdx].n+' замёл(а) следы — одна из ранее раскрытых характеристик снова скрыта.');
+    };
+    container.appendChild(btn);
+
+  } else if(ab.type==='swap_trait_others'){
+    const others = s.p.map((pl,i)=>i).filter(i=>i!==myIdx && !s.p[i].e);
+    if(others.length<2){
+      container.appendChild(el('p',{class:'tiny', text:'Нужны как минимум два других живых игрока.'}));
+      return;
+    }
+    const target1 = el('select');
+    target1.appendChild(el('option',{value:'', text:'Первый игрок'}));
+    others.forEach(i=>target1.appendChild(el('option',{value:i, text:s.p[i].n})));
+    container.appendChild(target1);
+
+    const target2 = el('select');
+    target2.appendChild(el('option',{value:'', text:'Сначала выбери первого игрока'}));
+    container.appendChild(target2);
+
+    const catSel = el('select');
+    catSel.appendChild(el('option',{value:'', text:'Сначала выбери обоих игроков'}));
+    container.appendChild(catSel);
+
+    const refreshTarget2 = ()=>{
+      const t1 = parseInt(target1.value);
+      target2.innerHTML = '';
+      if(isNaN(t1)){ target2.appendChild(el('option',{value:'', text:'Сначала выбери первого игрока'})); return; }
+      target2.appendChild(el('option',{value:'', text:'Второй игрок'}));
+      others.filter(i=>i!==t1).forEach(i=>target2.appendChild(el('option',{value:i, text:s.p[i].n})));
+    };
+    const refreshCats = ()=>{
+      const t1 = parseInt(target1.value), t2 = parseInt(target2.value);
+      catSel.innerHTML = '';
+      if(isNaN(t1) || isNaN(t2)){ catSel.appendChild(el('option',{value:'', text:'Сначала выбери обоих игроков'})); return; }
+      const common = [];
+      for(let c=0;c<CATS.length;c++){ if(!((s.p[t1].r>>c)&1) && !((s.p[t2].r>>c)&1)) common.push(c); }
+      if(common.length===0){ catSel.appendChild(el('option',{value:'', text:'Нет общей скрытой характеристики'})); return; }
+      catSel.appendChild(el('option',{value:'', text:'Какой категорией обменять?'}));
+      common.forEach(c=>catSel.appendChild(el('option',{value:c, text:CATS[c]})));
+    };
+    target1.onchange = ()=>{ refreshTarget2(); refreshCats(); };
+    target2.onchange = refreshCats;
+
+    const btn = el('button',{class:'primary', text:'Организовать обмен'});
+    btn.onclick = ()=>{
+      const t1=parseInt(target1.value), t2=parseInt(target2.value), ci=parseInt(catSel.value);
+      if(isNaN(t1)||isNaN(t2)||isNaN(ci)) return;
+      confirmAndApply(next=>{
+        const tmp = next.p[t1].v[ci];
+        next.p[t1].v[ci] = next.p[t2].v[ci];
+        next.p[t2].v[ci] = tmp;
+      }, '🔀 '+s.p[myIdx].n+' незаметно организовал(а) обмен характеристикой «'+CATS[ci]+'» между '+s.p[t1].n+' и '+s.p[t2].n+' (что именно поменялось — скрыто).');
+    };
+    container.appendChild(btn);
+
+  } else if(ab.type==='peek_other_all'){
+    const targetSel = el('select');
+    targetSel.appendChild(el('option',{value:'', text:'Выбери игрока'}));
+    s.p.forEach((pl,i)=>{
+      if(pl.e || i===myIdx) return;
+      let hasHidden=false; for(let c=0;c<CATS.length;c++){ if(!((pl.r>>c)&1)){ hasHidden=true; break; } }
+      if(hasHidden) targetSel.appendChild(el('option',{value:i, text:pl.n}));
+    });
+    container.appendChild(targetSel);
+    container.appendChild(el('p',{class:'tiny', style:'margin-top:6px;', text:'Ты получишь всё его дело целиком — но только для себя, остальные ничего не узнают.'}));
+    const btn = el('button',{class:'primary', text:'Получить полное дело'});
+    btn.onclick = ()=>{
+      const ti = parseInt(targetSel.value);
+      if(isNaN(ti)) return;
+      const mask = s.p[ti].r;
+      const hiddenCats = [];
+      for(let c=0;c<CATS.length;c++){ if(!((mask>>c)&1)) hiddenCats.push(c); }
+      confirmAndApply(next=>{
+        next.peeks = next.peeks || [];
+        hiddenCats.forEach(c=>{ next.peeks.push({viewer:myIdx, target:ti, cat:c}); });
+      }, '📁 '+s.p[myIdx].n+' получил(а) полное дело игрока '+s.p[ti].n+' (подробности не разглашаются).');
+    };
+    container.appendChild(btn);
+
+  } else if(ab.type==='pierce_shield'){
+    const shielded = s.p.map((pl,i)=>i).filter(i=>!s.p[i].e && i!==myIdx && s.p[i].shield);
+    if(shielded.length===0){
+      container.appendChild(el('p',{class:'tiny', text:'Пока ни у кого нет активного щита — способность сработает только против уже защитившегося игрока.'}));
+      return;
+    }
+    const targetSel = el('select');
+    targetSel.appendChild(el('option',{value:'', text:'Чей щит снять?'}));
+    shielded.forEach(i=>targetSel.appendChild(el('option',{value:i, text:s.p[i].n})));
+    container.appendChild(targetSel);
+    const btn = el('button',{class:'danger', text:'Разоблачить'});
+    btn.onclick = ()=>{
+      const ti = parseInt(targetSel.value);
+      if(isNaN(ti)) return;
+      confirmAndApply(next=>{ next.p[ti].shield = false; },
+        '🎯 '+s.p[myIdx].n+' разоблачил(а) защиту — щит игрока '+s.p[ti].n+' перед этим подсчётом голосов не сработает.');
+    };
+    container.appendChild(btn);
   }
 }
 
@@ -3125,7 +3353,7 @@ function renderGame(s, code){
 
     // ---- Вторая линия финала: что стало с изгнанниками ----
     if(s.refugeOutcome){
-      const rp = el('div',{class:'panel fade-in-up', 'data-tag':'История выживания'});
+      const rp = el('div',{class:'panel fade-in-up', 'data-tag':'Внешний протокол'});
       rp.appendChild(el('div',{class:'verdict-head', text:s.refugeOutcome.tierLabel}));
       rp.appendChild(el('p',{class:'tiny', style:'margin-bottom:10px;',
         text:'Укрытие нашёл(ла) '+s.refugeOutcome.finderName+'. В нём укрылись: '+s.refugeOutcome.crewNames.join(', ')+'.'}));
@@ -3137,7 +3365,7 @@ function renderGame(s, code){
       rp.appendChild(el('p',{style:'line-height:1.7;', text:s.refugeOutcome.text}));
       col.appendChild(rp);
     } else if(s.refuge && s.refuge.found === false && outcastIdx(s).length > 0){
-      const rp = el('div',{class:'panel fade-in-up', 'data-tag':'История выживания'});
+      const rp = el('div',{class:'panel fade-in-up', 'data-tag':'Внешний протокол'});
       rp.appendChild(el('p',{class:'tiny',
         text:'Изгнанники так и не нашли второго укрытия. Кто-то до последнего помогал бункеру, кто-то искал спасение сам — но поверхность не оставила им шанса.'}));
       col.appendChild(rp);
