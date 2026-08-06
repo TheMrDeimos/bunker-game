@@ -212,8 +212,6 @@
     overflow-y:auto;
     scrollbar-width:thin;
   }
-  .rail::-webkit-scrollbar{width:5px;}
-  .rail::-webkit-scrollbar-thumb{background:var(--line);}
   @media(max-width:900px){
     .shell{grid-template-columns:1fr;}
     .col{padding:14px 0 0; order:1;}
@@ -293,6 +291,45 @@
     details.panel > summary::before{transition:none;}
   }
 
+  /* ---------- полоса прокрутки как элемент нашего интерфейса ----------
+     Направляющая — та же служебная пунктирная линия, что в шапке и в
+     заголовках сворачиваемых секций. Бегунок — красный ромб: за него тянут. */
+  *{
+    scrollbar-width:thin;
+    scrollbar-color:var(--amber) transparent;
+  }
+  ::-webkit-scrollbar{width:14px; height:14px; background:transparent;}
+  ::-webkit-scrollbar-track{
+    background:
+      repeating-linear-gradient(180deg, var(--amber-dim) 0 9px, transparent 9px 18px)
+      center top / 1px 100% repeat-y;
+  }
+  ::-webkit-scrollbar-thumb{
+    background:
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 14'%3E%3Cpath d='M7 0.6L13.4 7L7 13.4L0.6 7Z' fill='%23c8342a'/%3E%3C/svg%3E")
+      center center / 14px 14px no-repeat,
+      linear-gradient(180deg, transparent, rgba(200,52,42,.45), transparent)
+      center top / 1px 100% no-repeat;
+    min-height:46px;
+    border:none;
+  }
+  ::-webkit-scrollbar-thumb:hover{
+    background:
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 14'%3E%3Cpath d='M7 0.2L13.8 7L7 13.8L0.2 7Z' fill='%23e0553f'/%3E%3C/svg%3E")
+      center center / 14px 14px no-repeat,
+      linear-gradient(180deg, transparent, rgba(224,85,63,.7), transparent)
+      center top / 1px 100% no-repeat;
+  }
+  ::-webkit-scrollbar-thumb:active{
+    background:
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 14'%3E%3Cpath d='M7 0.2L13.8 7L7 13.8L0.2 7Z' fill='%23ff3b3b'/%3E%3C/svg%3E")
+      center center / 14px 14px no-repeat,
+      linear-gradient(180deg, transparent, rgba(255,59,59,.8), transparent)
+      center top / 1px 100% no-repeat;
+  }
+  ::-webkit-scrollbar-button{display:none; width:0; height:0;}
+  ::-webkit-scrollbar-corner{background:transparent;}
+
   /* ---------- сводка / тревога ---------- */
   .alert-ticker{
     background:linear-gradient(90deg, rgba(200,52,42,0.09), transparent 70%);
@@ -329,8 +366,6 @@
     scrollbar-width:thin;
     padding-right:4px;
   }
-  .feed-list::-webkit-scrollbar{width:4px;}
-  .feed-list::-webkit-scrollbar-thumb{background:var(--line);}
   .feed-item{
     background:transparent;
     border:none;
