@@ -1231,8 +1231,84 @@
     padding:1px 6px; min-width:16px; text-align:center;
   }
   .comm-btn{
-    font-size:10.5px; padding:8px 11px; letter-spacing:1.2px;
+    font-size:9.5px; padding:6px 9px; letter-spacing:1px;
   }
+  .comm-voice .comm-btn{ font-size:9px; padding:6px 8px; }
+
+  /* ---------- кликабельное лого и виджет профиля в шапке ---------- */
+  .mark{ cursor:pointer; }
+  .mark:hover h1.brand{ color:var(--amber); }
+  .header-right{ display:flex; align-items:flex-end; gap:14px; }
+  .acct-widget{ position:relative; }
+  .acct-trigger{
+    display:flex; align-items:center; gap:8px;
+    background:transparent; border:1px solid var(--line);
+    padding:7px 11px; color:var(--muted);
+    font-family:'Oswald',sans-serif; font-size:10.5px;
+    letter-spacing:1.5px; text-transform:uppercase;
+  }
+  .acct-trigger:hover{ border-color:var(--amber); color:var(--paper); background:transparent; }
+  .acct-av{ font-size:15px; line-height:1; }
+  .acct-menu{
+    position:absolute; right:0; top:calc(100% + 6px);
+    min-width:190px; z-index:60;
+    background:var(--panel); border:1px solid var(--line);
+    border-left:2px solid var(--amber);
+    box-shadow:0 8px 24px rgba(0,0,0,.6);
+    display:none; flex-direction:column;
+  }
+  .acct-menu.open{ display:flex; }
+  .acct-menu-head{
+    padding:10px 12px; border-bottom:1px solid var(--line-soft);
+    font-size:11px; color:var(--muted);
+  }
+  .acct-menu-head b{ color:var(--paper); display:block; font-family:'Oswald',sans-serif;
+    letter-spacing:1px; text-transform:uppercase; font-size:13px; margin-bottom:2px; }
+  .acct-item{
+    text-align:left; background:transparent; border:none; border-radius:0;
+    padding:10px 12px; color:var(--muted);
+    font-family:'Oswald',sans-serif; font-size:11px;
+    letter-spacing:1.5px; text-transform:uppercase;
+    border-bottom:1px solid var(--line-soft);
+  }
+  .acct-item:last-child{ border-bottom:none; }
+  .acct-item:hover{ background:var(--bg-2); color:var(--paper); }
+  .acct-item.danger-item:hover{ background:var(--rust); color:#fff; }
+
+  /* ---------- возврат в текущую партию ---------- */
+  .resume-bar{
+    display:flex; align-items:center; gap:12px; flex-wrap:wrap;
+    justify-content:center;
+    border:1px solid var(--amber-dim); border-left:3px solid var(--amber);
+    background:rgba(200,52,42,.07);
+    padding:11px 16px; margin-top:14px;
+  }
+  .resume-text{ font-size:12px; color:var(--paper); }
+  .resume-text b{ color:var(--amber); font-family:'IBM Plex Mono',monospace; letter-spacing:2px; }
+
+  /* ---------- друзья и приглашения ---------- */
+  .friend-list{ display:flex; flex-direction:column; }
+  .friend-row{
+    display:flex; align-items:center; gap:10px;
+    padding:8px 0; border-bottom:1px solid var(--line-soft);
+  }
+  .friend-av{ font-size:17px; flex:0 0 auto; }
+  .friend-nick{
+    flex:1 1 auto; min-width:0;
+    font-family:'Oswald',sans-serif; font-size:13px;
+    letter-spacing:1px; text-transform:uppercase; color:var(--paper);
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+  .friend-row button{ font-size:9.5px; padding:6px 9px; letter-spacing:1px; }
+  .invite-card{
+    border:1px solid var(--amber-dim); border-left:3px solid var(--amber);
+    background:rgba(200,52,42,.07);
+    padding:10px 12px; margin-bottom:8px;
+    display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+  }
+  .invite-card .inv-text{ flex:1 1 auto; font-size:12px; color:var(--paper); }
+  .invite-card .inv-text b{ color:var(--amber); font-family:'IBM Plex Mono',monospace; letter-spacing:2px; }
+  .invite-card button{ font-size:9.5px; padding:6px 10px; }
   .voice-list{ display:flex; flex-direction:column; gap:4px; margin-top:4px; }
   .voice-person{
     display:flex; align-items:center; gap:7px;
@@ -1311,13 +1387,16 @@
 <div class="vote-alert-frame"></div>
 <div class="hazard">Протокол Рассвет · мест в убежище меньше, чем претендентов</div>
 <header class="top">
-  <div class="mark">
+  <div class="mark" id="brandHome" title="На главную">
     <div class="mark-glyph"><i></i></div>
     <h1 class="brand">Протокол<span>Рассвет</span></h1>
   </div>
-  <div class="subbrand">
-    <div>Раскрой <b>9</b> характеристик · переживи <b>3</b> ночи</div>
-    <div id="statusLine">инициализация…</div>
+  <div class="header-right">
+    <div class="subbrand">
+      <div>Раскрой <b>9</b> характеристик · переживи <b>3</b> ночи</div>
+      <div id="statusLine">инициализация…</div>
+    </div>
+    <div class="acct-widget" id="acctWidget"></div>
   </div>
 </header>
 
@@ -2673,11 +2752,21 @@ if(configOk){
       authReady = true;
       myUid = user.uid;
       isAnonUser = !!user.isAnonymous;
-      loadMyProfile().then(()=>{ boot(); });
+      loadMyProfile().then(()=>{
+        subscribeFriends();
+        subscribeInvites(()=>{
+          // Приглашения показываются на главной — перерисуем её, если игрок там
+          if(document.querySelector('.landing')) renderLanding();
+        });
+        boot();
+      });
     } else {
       // Вышли из аккаунта — возвращаемся к анонимному режиму, чтобы игра
       // продолжала работать по правилам безопасности Firebase.
       myUid = null; myProfile = null; isAnonUser = true;
+      if(friendsOffFn) friendsOffFn();
+      if(invitesOffFn) invitesOffFn();
+      myFriends = []; myInvites = [];
       firebase.auth().signInAnonymously().catch(err=>{
         console.error('Anonymous auth failed:', err);
         renderAuthError(err);
@@ -2705,7 +2794,7 @@ function registerAccount(email, password, nick, avatarId){
     myUid = u.uid;
     isAnonUser = false;
     myProfile = { nick: nick, avatar: avatarId, stats: blankStats() };
-    return saveMyProfile();
+    return saveMyProfile().then(()=>claimNickIndex(nick, myUid));
   });
 }
 
@@ -3146,6 +3235,110 @@ function stopVoice(){
 }
 window.addEventListener('beforeunload', ()=>{ try{ stopVoice(); }catch(e){} });
 
+/* ---------------- Друзья, ник-индекс и приглашения ----------------
+   Чтобы искать людей по нику, нужен обратный индекс: nicks/{ник в нижнем
+   регистре} -> uid. Он пишется при регистрации и при смене ника.
+   Дружба взаимная: запись создаётся сразу в обе стороны. */
+function nickKey(nick){ return String(nick||'').trim().toLowerCase(); }
+
+function claimNickIndex(nick, uid){
+  return db.ref('nicks/'+nickKey(nick)).set(uid);
+}
+
+function findUidByNick(nick){
+  return db.ref('nicks/'+nickKey(nick)).once('value').then(s=>s.val());
+}
+
+let myFriends = [];   // [{uid, nick, avatar}]
+let friendsOffFn = null;
+
+function subscribeFriends(){
+  if(friendsOffFn) friendsOffFn();
+  myFriends = [];
+  if(!myUid || isAnonUser) return;
+  const ref = db.ref('friends/'+myUid);
+  const handler = snap=>{
+    const val = snap.val() || {};
+    myFriends = Object.keys(val).map(uid=>({
+      uid, nick:(val[uid]||{}).nick || '—', avatar:(val[uid]||{}).avatar || AVATARS[0].id
+    }));
+  };
+  ref.on('value', handler);
+  friendsOffFn = ()=>{ ref.off('value', handler); friendsOffFn = null; };
+}
+
+function addFriendByNick(nick){
+  if(!myUid || isAnonUser) return Promise.reject(new Error('Нужен аккаунт.'));
+  const key = nickKey(nick);
+  if(!key) return Promise.reject(new Error('Укажи никнейм.'));
+  if(myProfile && nickKey(myProfile.nick) === key) return Promise.reject(new Error('Это твой собственный ник.'));
+  return findUidByNick(key).then(uid=>{
+    if(!uid) throw new Error('Игрок с таким ником не найден.');
+    if(uid === myUid) throw new Error('Это твой собственный аккаунт.');
+    return db.ref('profiles/'+uid).once('value').then(snap=>{
+      const prof = snap.val();
+      if(!prof) throw new Error('Профиль игрока недоступен.');
+      const updates = {};
+      updates['friends/'+myUid+'/'+uid] = { nick: prof.nick, avatar: prof.avatar || AVATARS[0].id, ts: Date.now() };
+      updates['friends/'+uid+'/'+myUid] = { nick: myProfile.nick, avatar: myProfile.avatar, ts: Date.now() };
+      return db.ref().update(updates);
+    });
+  });
+}
+
+function removeFriend(friendUid){
+  if(!myUid || isAnonUser) return Promise.resolve();
+  const updates = {};
+  updates['friends/'+myUid+'/'+friendUid] = null;
+  updates['friends/'+friendUid+'/'+myUid] = null;
+  return db.ref().update(updates);
+}
+
+// Приглашение в комнату: попадает в inbox друга, он видит его на главной.
+function inviteFriendToRoom(friendUid, code){
+  if(!myUid || isAnonUser) return Promise.resolve();
+  return db.ref('invites/'+friendUid+'/'+code).set({
+    from: (myProfile && myProfile.nick) ? myProfile.nick : 'Игрок',
+    fromUid: myUid,
+    code: code,
+    ts: Date.now()
+  });
+}
+
+let myInvites = [];
+let invitesOffFn = null;
+function subscribeInvites(onChange){
+  if(invitesOffFn) invitesOffFn();
+  myInvites = [];
+  if(!myUid || isAnonUser) return;
+  const ref = db.ref('invites/'+myUid);
+  const handler = snap=>{
+    const val = snap.val() || {};
+    myInvites = Object.keys(val).map(code=>Object.assign({code}, val[code]))
+      .sort((a,b)=>(b.ts||0)-(a.ts||0));
+    if(onChange) onChange();
+  };
+  ref.on('value', handler);
+  invitesOffFn = ()=>{ ref.off('value', handler); invitesOffFn = null; };
+}
+function dismissInvite(code){
+  if(!myUid) return Promise.resolve();
+  return db.ref('invites/'+myUid+'/'+code).remove();
+}
+
+/* --- Запоминаем комнату, в которой игрок занял место, чтобы можно было вернуться --- */
+function rememberRoom(code, seatTaken){
+  try{
+    if(seatTaken) localStorage.setItem('bunker_last_room', code);
+  }catch(e){}
+}
+function getRememberedRoom(){
+  try{ return localStorage.getItem('bunker_last_room'); }catch(e){ return null; }
+}
+function forgetRoom(){
+  try{ localStorage.removeItem('bunker_last_room'); }catch(e){}
+}
+
 /* ---------------- Идентификация игрока на этом устройстве ---------------- */
 // Каждый браузер получает свой случайный deviceId, который сохраняется локально.
 // Место (индекс игрока) в конкретной комнате привязывается к deviceId через
@@ -3580,7 +3773,87 @@ function mountCommDock(s, myIdx){
 }
 
 /* ================= UI: профиль игрока ================= */
-function renderProfileScreen(){
+/* ================= Шапка: лого-ссылка и виджет аккаунта ================= */
+let acctMenuOpen = false;
+
+function renderHeaderWidget(){
+  const host = document.getElementById('acctWidget');
+  if(!host) return;
+  host.innerHTML = '';
+
+  const trigger = el('button',{class:'acct-trigger'});
+  if(myProfile && !isAnonUser){
+    const av = avatarById(myProfile.avatar);
+    trigger.appendChild(el('span',{class:'acct-av', style:'color:'+av.color, text:av.glyph}));
+    trigger.appendChild(el('span',{text:myProfile.nick}));
+  } else {
+    trigger.appendChild(el('span',{class:'acct-av', text:'◇'}));
+    trigger.appendChild(el('span',{text:'Гость'}));
+  }
+  trigger.appendChild(el('span',{class:'comm-toggle', text:'▾'}));
+  host.appendChild(trigger);
+
+  const menu = el('div',{class:'acct-menu'+(acctMenuOpen?' open':'')});
+  if(myProfile && !isAnonUser){
+    const head = el('div',{class:'acct-menu-head'});
+    head.appendChild(el('b',{text:myProfile.nick}));
+    const st = myProfile.stats || blankStats();
+    head.appendChild(el('span',{text:'Партий: '+st.games+' · Побед: '+st.wins}));
+    menu.appendChild(head);
+
+    const toProfile = el('button',{class:'acct-item', text:'Мой профиль'});
+    toProfile.onclick = ()=>{ acctMenuOpen = false; renderProfileScreen(); };
+    menu.appendChild(toProfile);
+
+    const toFriends = el('button',{class:'acct-item', text:'Друзья'});
+    toFriends.onclick = ()=>{ acctMenuOpen = false; renderProfileScreen('friends'); };
+    menu.appendChild(toFriends);
+
+    const out = el('button',{class:'acct-item danger-item', text:'Выйти из аккаунта'});
+    out.onclick = ()=>{
+      acctMenuOpen = false;
+      if(confirm('Выйти из аккаунта? Статистика сохранится.')){
+        logoutAccount().then(()=>renderLanding());
+      }
+    };
+    menu.appendChild(out);
+  } else {
+    const head = el('div',{class:'acct-menu-head'});
+    head.appendChild(el('b',{text:'Гостевой режим'}));
+    head.appendChild(el('span',{text:'Статистика не сохраняется'}));
+    menu.appendChild(head);
+    const login = el('button',{class:'acct-item', text:'Войти / зарегистрироваться'});
+    login.onclick = ()=>{ acctMenuOpen = false; renderProfileScreen(); };
+    menu.appendChild(login);
+  }
+  host.appendChild(menu);
+
+  trigger.onclick = ev=>{
+    ev.stopPropagation();
+    acctMenuOpen = !acctMenuOpen;
+    menu.classList.toggle('open', acctMenuOpen);
+  };
+}
+// клик вне меню — закрываем
+document.addEventListener('click', ()=>{
+  if(!acctMenuOpen) return;
+  acctMenuOpen = false;
+  const m = document.querySelector('.acct-menu');
+  if(m) m.classList.remove('open');
+});
+
+function initBrandHome(){
+  const brand = document.getElementById('brandHome');
+  if(brand && !brand.dataset.bound){
+    brand.dataset.bound = '1';
+    brand.onclick = ()=>{
+      // Из игры уходим на главную, но комнату не забываем: вернуться можно кнопкой
+      renderLanding();
+    };
+  }
+}
+
+function renderProfileScreen(tab){
   document.getElementById('statusLine').textContent = myProfile ? 'профиль' : 'вход и регистрация';
   document.body.classList.remove('hide-chrome');
   const app = document.getElementById('app');
@@ -3597,13 +3870,15 @@ function renderProfileScreen(){
   col.appendChild(back);
 
   if(myProfile && !isAnonUser){
-    renderProfileView(col, rail);
+    renderProfileView(col, rail, tab);
   } else {
     renderAuthForms(col, rail);
   }
+  renderHeaderWidget();
+  initBrandHome();
 }
 
-function renderProfileView(col, rail){
+function renderProfileView(col, rail, tab){
   const av = avatarById(myProfile.avatar);
   const panel = el('div',{class:'panel', 'data-tag':'Профиль'});
 
@@ -3668,6 +3943,55 @@ function renderProfileView(col, rail){
   addLine('Использовано способностей', st.abilitiesUsed);
   statsPanel.appendChild(detail);
   col.appendChild(statsPanel);
+
+  // ---- друзья ----
+  const friendsPanel = el('div',{class:'panel', 'data-tag':'Друзья'});
+  friendsPanel.appendChild(el('p',{class:'tiny', style:'margin-bottom:10px;',
+    text:'Добавляй игроков по никнейму — потом сможешь приглашать их в игру одним нажатием.'}));
+
+  const addRow = el('div',{class:'row', style:'gap:8px; align-items:stretch;'});
+  const nickInp = el('input',{type:'text', placeholder:'Никнейм игрока', maxlength:'20', style:'margin-bottom:0; flex:1 1 auto;'});
+  const addBtn = el('button',{class:'primary', style:'font-size:11px; padding:9px 14px;', text:'Добавить'});
+  addRow.appendChild(nickInp);
+  addRow.appendChild(addBtn);
+  friendsPanel.appendChild(addRow);
+  const fErr = el('div',{class:'error-msg'});
+  friendsPanel.appendChild(fErr);
+
+  addBtn.onclick = ()=>{
+    fErr.textContent = '';
+    const v = nickInp.value.trim();
+    if(!v){ fErr.textContent = 'Введи никнейм.'; return; }
+    addBtn.disabled = true; addBtn.textContent = '…';
+    addFriendByNick(v)
+      .then(()=>{ nickInp.value=''; addBtn.disabled=false; addBtn.textContent='Добавить'; renderProfileScreen('friends'); })
+      .catch(e=>{
+        fErr.textContent = e.message || 'Не удалось добавить.';
+        addBtn.disabled = false; addBtn.textContent = 'Добавить';
+      });
+  };
+  nickInp.onkeydown = ev=>{ if(ev.key==='Enter'){ ev.preventDefault(); addBtn.onclick(); } };
+
+  const list = el('div',{class:'friend-list', style:'margin-top:12px;'});
+  if(myFriends.length === 0){
+    list.appendChild(el('p',{class:'tiny', text:'Пока никого нет. Добавь друга по никнейму выше.'}));
+  }
+  myFriends.forEach(f=>{
+    const fav = avatarById(f.avatar);
+    const row = el('div',{class:'friend-row'});
+    row.appendChild(el('span',{class:'friend-av', style:'color:'+fav.color, text:fav.glyph}));
+    row.appendChild(el('span',{class:'friend-nick', text:f.nick}));
+    const del = el('button',{class:'ghost', text:'Убрать'});
+    del.onclick = ()=>{
+      if(confirm('Убрать '+f.nick+' из друзей?')){
+        removeFriend(f.uid).then(()=>renderProfileScreen('friends'));
+      }
+    };
+    row.appendChild(del);
+    list.appendChild(row);
+  });
+  friendsPanel.appendChild(list);
+  col.appendChild(friendsPanel);
 
   const info = el('div',{class:'panel', 'data-tag':'Как считается'});
   info.appendChild(el('p',{class:'tiny', text:'Победой считается любой исход, в котором ты дожил(а) до рассвета: либо остался(ась) в убежище, либо выжил(а) вместе с изгнанниками во «Внешнем протоколе». Статистика начисляется один раз за партию, на финальном экране.'}));
@@ -3826,6 +4150,47 @@ function renderLanding(){
   }
   landing.appendChild(accRow);
 
+  // ---- возврат в партию, из которой ушли ----
+  const lastRoom = getRememberedRoom();
+  if(lastRoom){
+    const resume = el('div',{class:'resume-bar'});
+    resume.appendChild(el('span',{class:'resume-text', html:'Ты уже в партии — комната <b>'+lastRoom+'</b>'}));
+    const backBtn = el('button',{class:'primary', style:'font-size:11px; padding:9px 14px;', text:'Вернуться в игру'});
+    backBtn.onclick = ()=>{
+      document.body.classList.remove('hide-chrome');
+      history.replaceState(null,'', location.pathname + '?room=' + lastRoom);
+      subscribeRoom(lastRoom);
+    };
+    resume.appendChild(backBtn);
+    const dropBtn = el('button',{class:'ghost', style:'font-size:10px; padding:8px 11px;', text:'Забыть'});
+    dropBtn.onclick = ()=>{ forgetRoom(); renderLanding(); };
+    resume.appendChild(dropBtn);
+    landing.appendChild(resume);
+  }
+
+  // ---- приглашения от друзей ----
+  if(myInvites.length > 0){
+    const invWrap = el('div',{style:'margin-top:14px; width:100%; max-width:520px;'});
+    myInvites.slice(0,4).forEach(inv=>{
+      const card = el('div',{class:'invite-card'});
+      card.appendChild(el('span',{class:'inv-text',
+        html:'<b>'+(inv.from||'Игрок')+'</b> зовёт в комнату <b>'+inv.code+'</b>'}));
+      const go = el('button',{class:'primary', text:'Войти'});
+      go.onclick = ()=>{
+        dismissInvite(inv.code);
+        document.body.classList.remove('hide-chrome');
+        history.replaceState(null,'', location.pathname + '?room=' + inv.code);
+        subscribeRoom(inv.code);
+      };
+      card.appendChild(go);
+      const no = el('button',{class:'ghost', text:'Скрыть'});
+      no.onclick = ()=>{ dismissInvite(inv.code).then(()=>renderLanding()); };
+      card.appendChild(no);
+      invWrap.appendChild(card);
+    });
+    landing.appendChild(invWrap);
+  }
+
   app.appendChild(landing);
 
   // ---- окно обновлений ----
@@ -3855,10 +4220,14 @@ function renderLanding(){
   });
   notes.appendChild(scroll);
   app.appendChild(notes);
+  renderHeaderWidget();
+  initBrandHome();
 }
 
 function renderLobby(){
   document.getElementById('statusLine').textContent = 'ожидание · создайте или войдите в комнату';
+  renderHeaderWidget();
+  initBrandHome();
   document.body.classList.remove('vote-mode');
   setVfx(null);
   const app = document.getElementById('app');
@@ -3887,8 +4256,10 @@ function renderLobby(){
     tabCreate.className='tab active'; tabJoin.className='tab';
     body.innerHTML='';
     body.appendChild(el('p',{text:'Впиши имена игроков, которые будут участвовать (от '+MIN_PLAYERS+' до '+MAX_PLAYERS+'). Поле можно оставить пустым — такой игрок просто не попадёт в игру: он не будет ходить, раскрывать характеристики и участвовать в голосованиях.'}));
+
     const grid = el('div',{class:'grid6'});
     const inputs = [];
+    const invitedUids = []; // кого позвать из друзей после создания комнаты
     for(let i=0;i<MAX_PLAYERS;i++){
       const wrap = el('div');
       wrap.appendChild(el('label',{text:'Игрок '+(i+1)+' (можно оставить пустым)'}));
@@ -3898,6 +4269,37 @@ function renderLobby(){
       wrap.appendChild(inp);
       grid.appendChild(wrap);
     }
+
+    // Быстрое заполнение из списка друзей: подставляем ник в первое свободное поле
+    if(myProfile && !isAnonUser){
+      const fPanel = el('div',{style:'margin-bottom:14px;'});
+      fPanel.appendChild(el('label',{text:'Пригласить из друзей'}));
+      if(myFriends.length === 0){
+        fPanel.appendChild(el('p',{class:'tiny', text:'Список друзей пуст — добавь кого-нибудь в профиле, и они появятся здесь.'}));
+      } else {
+        const chips = el('div',{class:'row', style:'gap:6px;'});
+        myFriends.forEach(f=>{
+          const fav = avatarById(f.avatar);
+          const chip = el('button',{class:'ghost', style:'font-size:10.5px; padding:7px 10px;'});
+          chip.appendChild(el('span',{style:'color:'+fav.color+'; margin-right:6px;', text:fav.glyph}));
+          chip.appendChild(el('span',{text:f.nick}));
+          chip.onclick = ()=>{
+            const free = inputs.find(inp=>!inp.value.trim());
+            if(!free){ return; }
+            free.value = f.nick.slice(0,16);
+            if(invitedUids.indexOf(f.uid) === -1) invitedUids.push(f.uid);
+            chip.disabled = true;
+            chip.classList.add('primary');
+          };
+          chips.appendChild(chip);
+        });
+        fPanel.appendChild(chips);
+        fPanel.appendChild(el('p',{class:'tiny', style:'margin-top:6px;',
+          text:'Друг получит приглашение с кодом комнаты — оно появится у него на главной странице.'}));
+      }
+      body.appendChild(fPanel);
+    }
+
     body.appendChild(grid);
     const btn = el('button',{class:'primary', text:'Создать игру'});
     const err = el('div',{class:'error-msg', text:''});
@@ -3914,6 +4316,7 @@ function renderLobby(){
       const s = makeGame(names);
       const code = genRoomCode();
       db.ref('rooms/'+code).set(s).then(()=>{
+        invitedUids.forEach(uid=>{ inviteFriendToRoom(uid, code).catch(()=>{}); });
         history.replaceState(null,'', location.pathname + '?room=' + code);
         subscribeRoom(code);
       }).catch(e=>{ err.textContent = 'Ошибка записи в базу: '+e.message; });
@@ -4574,6 +4977,9 @@ function renderGame(s, code){
   app.appendChild(shell);
 
   const myIdx = myPlayerIdx(s);
+  renderHeaderWidget();
+  initBrandHome();
+  rememberRoom(code, myIdx >= 0); // помним комнату, только если место реально занято
   mountCommDock(s, myIdx);
   if(s.ph === 'end') recordGameStats(s, myIdx);
 
@@ -5035,6 +5441,13 @@ function renderGame(s, code){
           claimSeat(code, i, myDeviceId).then(result=>{
             if(result==='taken'){
               seatErr.textContent = 'Кто-то успел выбрать это место на секунду раньше — выбери другого игрока.';
+              return;
+            }
+            rememberRoom(code, true);
+            // Зарегистрированный игрок садится под своим ником из профиля —
+            // организатору не нужно угадывать, как кого зовут на самом деле.
+            if(myProfile && !isAnonUser && myProfile.nick && myProfile.nick !== pl.n){
+              db.ref('rooms/'+code+'/p/'+i+'/n').set(myProfile.nick.slice(0,16));
             }
           });
         };
