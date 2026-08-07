@@ -1236,6 +1236,10 @@
   }
   .pname-main{ display:flex; align-items:center; gap:7px; min-width:0; }
   .pname-av{ font-size:15px; line-height:1; flex:0 0 auto; }
+  .voice-state{
+    font-family:'Oswald',sans-serif; font-size:8.5px; letter-spacing:1px;
+    color:var(--muted-2); margin-left:auto; white-space:nowrap;
+  }
   .comm-btn{
     font-size:9.5px; padding:6px 9px; letter-spacing:1px;
   }
@@ -3137,28 +3141,39 @@ async function startVoice(s, myIdx){
   voiceRef.on('value', voiceHandler);
   rtcOffFns.push(()=>voiceRef.off('value', voiceHandler));
 
-  // входящие сигналы лично мне
+  // Входящие сигналы лично мне. Слушаем child_added по очереди сообщений:
+  // так ни один ICE-кандидат не теряется, а порядок обработки сохраняется.
+  // Сообщения обрабатываем строго последовательно — параллельная обработка
+  // offer и следующих за ним кандидатов ломает состояние соединения.
   const inbox = db.ref('rooms/'+currentRoom+'/rtc/'+myPeerId);
-  const inboxHandler = async snap=>{
-    const val = snap.val();
-    if(!val) return;
-    for(const fromId of Object.keys(val)){
-      const msg = val[fromId];
-      if(!msg) continue;
-      await handleSignal(fromId, msg);
-      db.ref('rooms/'+currentRoom+'/rtc/'+myPeerId+'/'+fromId).remove();
-    }
+  let signalChain = Promise.resolve();
+  const inboxHandler = snap=>{
+    const msg = snap.val();
+    const key = snap.key;
+    if(!msg || !msg.from) { inbox.child(key).remove(); return; }
+    signalChain = signalChain
+      .then(()=>handleSignal(msg.from, msg))
+      .catch(err=>console.error('Ошибка обработки сигнала:', err))
+      .then(()=>{ inbox.child(key).remove(); });
   };
-  inbox.on('value', inboxHandler);
-  rtcOffFns.push(()=>inbox.off('value', inboxHandler));
+  inbox.on('child_added', inboxHandler);
+  rtcOffFns.push(()=>inbox.off('child_added', inboxHandler));
+  rtcOffFns.push(()=>inbox.remove());
   rtcOffFns.push(()=>presenceRef.remove());
 
   renderVoiceDock();
 }
 
+// Сигналы кладём в ОЧЕРЕДЬ через push(), а не в фиксированный слот через set().
+// Иначе каждое следующее сообщение затирает предыдущее: при установке связи
+// подряд летят offer/answer и десяток ICE-кандидатов, и почти все они терялись —
+// браузеры не находили маршрут, микрофон работал, но собеседника не было слышно.
 function sendSignal(toPeerId, payload){
   if(!currentRoom || !myPeerId) return;
-  db.ref('rooms/'+currentRoom+'/rtc/'+toPeerId+'/'+myPeerId).set(payload);
+  const msg = Object.assign({ from: myPeerId, ts: Date.now() }, payload);
+  db.ref('rooms/'+currentRoom+'/rtc/'+toPeerId).push(msg).catch(err=>{
+    console.error('Не удалось отправить сигнал:', err);
+  });
 }
 
 function createPeer(peerId, isInitiator){
@@ -3172,11 +3187,26 @@ function createPeer(peerId, isInitiator){
   if(localStream){
     localStream.getTracks().forEach(track=>pc.addTrack(track, localStream));
   }
-  pc.ontrack = ev=>{ audioEl.srcObject = ev.streams[0]; };
+  pc.ontrack = ev=>{
+    audioEl.srcObject = ev.streams[0];
+    // Некоторые браузеры не запускают воспроизведение автоматически даже с autoplay.
+    const tryPlay = ()=>audioEl.play().catch(()=>{});
+    tryPlay();
+    setTimeout(tryPlay, 300);
+  };
   pc.onicecandidate = ev=>{
     if(ev.candidate) sendSignal(peerId, { type:'ice', candidate: JSON.stringify(ev.candidate) });
   };
+  pc.oniceconnectionstatechange = ()=>{
+    console.log('[voice] ICE '+peerId+': '+pc.iceConnectionState);
+    if(pc.iceConnectionState === 'failed'){
+      // Обычно означает, что прямой маршрут не найден (строгий NAT) — пробуем заново
+      try{ pc.restartIce && pc.restartIce(); }catch(e){}
+    }
+    renderVoiceDock();
+  };
   pc.onconnectionstatechange = ()=>{
+    console.log('[voice] connection '+peerId+': '+pc.connectionState);
     if(pc.connectionState === 'failed' || pc.connectionState === 'closed') closePeer(peerId);
     renderVoiceDock();
   };
@@ -3196,6 +3226,7 @@ async function handleSignal(fromId, msg){
   let peer = peers[fromId];
   if(!peer){ peer = createPeer(fromId, false); }
   const pc = peer.pc;
+  if(!pc || pc.signalingState === 'closed') return;
   try{
     if(msg.type === 'offer'){
       await pc.setRemoteDescription(new RTCSessionDescription(JSON.parse(msg.sdp)));
@@ -3206,18 +3237,25 @@ async function handleSignal(fromId, msg){
       peer.pendingIce.forEach(c=>pc.addIceCandidate(new RTCIceCandidate(c)).catch(()=>{}));
       peer.pendingIce = [];
     } else if(msg.type === 'answer'){
+      // Ответ имеет смысл только пока мы ждём его на свой offer. Повторный или
+      // запоздавший answer в стабильном состоянии молча игнорируем, иначе
+      // setRemoteDescription бросит исключение и оборвёт установку связи.
+      if(pc.signalingState !== 'have-local-offer'){
+        console.log('[voice] пропущен answer от '+fromId+' (состояние '+pc.signalingState+')');
+        return;
+      }
       await pc.setRemoteDescription(new RTCSessionDescription(JSON.parse(msg.sdp)));
       peer.pendingIce.forEach(c=>pc.addIceCandidate(new RTCIceCandidate(c)).catch(()=>{}));
       peer.pendingIce = [];
     } else if(msg.type === 'ice'){
       const cand = JSON.parse(msg.candidate);
       if(pc.remoteDescription && pc.remoteDescription.type){
-        await pc.addIceCandidate(new RTCIceCandidate(cand));
+        await pc.addIceCandidate(new RTCIceCandidate(cand)).catch(e=>console.warn('ICE отклонён:', e));
       } else {
         peer.pendingIce.push(cand); // описание ещё не установлено — придержим
       }
     }
-  }catch(err){ console.error('signal error', err); }
+  }catch(err){ console.error('Ошибка сигнала ('+msg.type+' от '+fromId+'):', err); }
 }
 
 function closePeer(peerId){
@@ -3729,12 +3767,18 @@ function renderVoiceDock(){
   ids.forEach(pid=>{
     const meta = voicePeersMeta[pid] || {};
     const isMe = pid === myPeerId;
-    const connected = isMe || (peers[pid] && peers[pid].pc &&
-      (peers[pid].pc.connectionState === 'connected' || peers[pid].pc.connectionState === 'completed'));
+    const pc = peers[pid] && peers[pid].pc;
+    const state = pc ? pc.connectionState : null;
+    const connected = isMe || state === 'connected';
     const item = el('div',{class:'voice-person'+(isMe?' me':'')});
     item.appendChild(el('span',{class:'voice-dot'+(connected?' on':'')}));
     item.appendChild(el('span',{text: meta.name + (isMe ? ' (ты)' : '')}));
     if(isMe && voiceMuted) item.appendChild(el('span',{class:'voice-muted', text:'выкл'}));
+    if(!isMe && !connected){
+      const labels = { 'new':'подключение…', 'connecting':'подключение…', 'disconnected':'связь потеряна',
+                       'failed':'не удалось', 'closed':'отключён' };
+      item.appendChild(el('span',{class:'voice-state', text: labels[state] || 'подключение…'}));
+    }
     list.appendChild(item);
   });
   if(ids.length <= 1){
