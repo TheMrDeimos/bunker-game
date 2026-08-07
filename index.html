@@ -81,7 +81,11 @@
     animation:sweep 8s linear infinite;
   }
   @keyframes sweep{0%{top:-90px;} 100%{top:100%;}}
-  header.top, main, footer{position:relative; z-index:2;}
+  /* Шапка должна лежать ВЫШЕ основного контента: у неё выпадающее меню аккаунта,
+     а при равном z-index элемент, идущий позже в разметке (main), перекрывал бы его —
+     меню выглядело бы «прозрачным», хотя фон у него непрозрачный. */
+  main, footer{position:relative; z-index:2;}
+  header.top{position:relative; z-index:50;}
 
   .vote-alert-frame{
     position:fixed; inset:0; pointer-events:none; z-index:3;
@@ -1230,10 +1234,19 @@
     font-family:'Oswald',sans-serif; font-size:9px;
     padding:1px 6px; min-width:16px; text-align:center;
   }
+  .pname-main{ display:flex; align-items:center; gap:7px; min-width:0; }
+  .pname-av{ font-size:15px; line-height:1; flex:0 0 auto; }
   .comm-btn{
     font-size:9.5px; padding:6px 9px; letter-spacing:1px;
   }
   .comm-voice .comm-btn{ font-size:9px; padding:6px 8px; }
+  /* Кнопка подключения растягивается на всю ширину панели: иначе вокруг неё
+     оставалось много пустого места и рамка казалась несоразмерно большой. */
+  .comm-join{
+    display:block; width:100%;
+    margin-top:8px;
+    padding:9px 10px; font-size:10px;
+  }
 
   /* ---------- кликабельное лого и виджет профиля в шапке ---------- */
   .mark{ cursor:pointer; }
@@ -1252,10 +1265,13 @@
   .acct-menu{
     position:absolute; right:0; top:calc(100% + 6px);
     min-width:190px; z-index:60;
-    background:var(--panel); border:1px solid var(--line);
+    background:#151513;
+    background-color:var(--panel);
+    border:1px solid var(--line);
     border-left:2px solid var(--amber);
-    box-shadow:0 8px 24px rgba(0,0,0,.6);
+    box-shadow:0 8px 24px rgba(0,0,0,.75);
     display:none; flex-direction:column;
+    backdrop-filter:none;
   }
   .acct-menu.open{ display:flex; }
   .acct-menu-head{
@@ -3362,6 +3378,37 @@ function myPlayerIdx(s){
 }
 
 // Возвращает Promise: 'ok' | 'taken'
+// Держит имя и аватар на занятом месте в соответствии с профилем.
+// Вызывается при каждой перерисовке, а не только в момент занятия места:
+// так ник восстановится и если запись в тот момент не прошла, и если чужой
+// ход перезаписал состояние целиком старой копией, и если игрок сменил ник
+// в профиле уже посреди партии.
+let lastIdentitySync = '';
+function syncSeatIdentity(code, s, myIdx){
+  if(myIdx < 0 || !myProfile || isAnonUser) return;
+  const nick = String(myProfile.nick || '').slice(0,16);
+  if(!nick) return;
+  const me = s.p[myIdx];
+  if(!me) return;
+  const avatarId = myProfile.avatar || null;
+  const nameOk = me.n === nick;
+  const avatarOk = (me.av || null) === avatarId;
+  if(nameOk && avatarOk) return;
+
+  // не долбим базу одинаковой записью, если предыдущая ещё не долетела
+  const sig = code+'|'+myIdx+'|'+nick+'|'+avatarId;
+  if(lastIdentitySync === sig) return;
+  lastIdentitySync = sig;
+
+  const patch = {};
+  if(!nameOk) patch.n = nick;
+  if(!avatarOk) patch.av = avatarId;
+  db.ref('rooms/'+code+'/p/'+myIdx).update(patch).catch(err=>{
+    console.error('Не удалось синхронизировать имя с профилем:', err);
+    lastIdentitySync = ''; // разрешаем повтор на следующей перерисовке
+  });
+}
+
 function claimSeat(code, idx, deviceId){
   return db.ref('rooms/'+code+'/claims/'+idx).transaction(current=>{
     if(current===null || current===undefined) return deviceId;
@@ -3428,7 +3475,13 @@ function renderRoster(s, opts={}){
       +(isLeader?' vote-leader':'')
     });
     const nameRow = el('div',{class:'pname'});
-    nameRow.appendChild(el('span',{text:pl.n}));
+    const nameCell = el('span',{class:'pname-main'});
+    if(pl.av){
+      const pav = avatarById(pl.av);
+      nameCell.appendChild(el('span',{class:'pname-av', style:'color:'+pav.color, text:pav.glyph}));
+    }
+    nameCell.appendChild(el('span',{text:pl.n}));
+    nameRow.appendChild(nameCell);
     if(pl.shield && (isOwn || s.ph!=='vote')) nameRow.appendChild(el('span',{class:'vote-count', style:'color:var(--neon)', text:'🛡 ЩИТ'}));
     if(s.ph==='vote' && !pl.e){
       const vc = s.vt.filter(t=>t===i).length;
@@ -3651,7 +3704,7 @@ function renderVoiceDock(){
   pane.appendChild(head);
 
   if(!voiceActive){
-    const joinBtn = el('button',{class:'primary comm-btn', text:'🎙 Подключить микрофон'});
+    const joinBtn = el('button',{class:'primary comm-btn comm-join', text:'🎙 Подключить микрофон'});
     joinBtn.onclick = ()=>startVoice(dockState.s, dockState.myIdx);
     pane.appendChild(joinBtn);
     if(!voiceSupported()){
@@ -4977,6 +5030,7 @@ function renderGame(s, code){
   app.appendChild(shell);
 
   const myIdx = myPlayerIdx(s);
+  syncSeatIdentity(code, s, myIdx);
   renderHeaderWidget();
   initBrandHome();
   rememberRoom(code, myIdx >= 0); // помним комнату, только если место реально занято
@@ -5444,11 +5498,8 @@ function renderGame(s, code){
               return;
             }
             rememberRoom(code, true);
-            // Зарегистрированный игрок садится под своим ником из профиля —
-            // организатору не нужно угадывать, как кого зовут на самом деле.
-            if(myProfile && !isAnonUser && myProfile.nick && myProfile.nick !== pl.n){
-              db.ref('rooms/'+code+'/p/'+i+'/n').set(myProfile.nick.slice(0,16));
-            }
+            // Ник и аватар из профиля подставит syncSeatIdentity при перерисовке —
+            // она же восстановит их, если запись не пройдёт с первого раза.
           });
         };
       }
