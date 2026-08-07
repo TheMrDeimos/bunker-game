@@ -1556,7 +1556,7 @@ function actionFitScore(pl, actionId, jobId){
 function computeOutcastModifier(s){
   const choices = s.outcastChoices || {};
   let mod = 0;
-  Object.values(choices).forEach(c=>{ if(c==='help') mod += 1; else if(c==='sabotage') mod -= 1; });
+  Object.values(choices).forEach(c=>{ if(c==='help') mod += 1; else if(c==='search') mod -= 1; });
   return mod;
 }
 
@@ -1626,31 +1626,45 @@ function startEventPhase(s){
   s.tp = 0;
 }
 
+// Живы ли все изгнанники приняли решение в эту фазу (помочь / искать своё)?
+// Без этой проверки фаза могла разрешиться сразу после последнего выжившего,
+// даже если изгнанник ещё не успел нажать кнопку — и его шанс на этот раунд просто исчезал.
+function allOutcastsDecided(s){
+  const crew = outcastIdx(s);
+  return crew.every(i => s.outcastChoices && typeof s.outcastChoices[i] === 'string');
+}
+
+// Общая точка, через которую проходит и завершение хода выжившего, и решение
+// изгнанника — фаза переходит дальше только тогда, когда готовы обе стороны.
+function maybeResolveEventPhase(s){
+  const act = activeIdx(s);
+  if(s.tp < act.length) return;       // не все выжившие ещё выбрали действие
+  if(!allOutcastsDecided(s)) return;  // ждём решения всех живых изгнанников
+  resolveEventPhase(s);
+  rollRefugeSearch(s);
+  if((s.eventPhase||0) >= EVENT_PHASES_TOTAL){
+    s.finalOutcome = computeFinalOutcome(s);
+    const r = ensureRefuge(s);
+    const crew = outcastIdx(s);
+    if(r.found && crew.length > 0){
+      // Последняя ночь: нашедший зовёт к себе всех изгнанников,
+      // и им предстоит распределить обязанности уже между собой
+      r.invited = true;
+      r.jobs = {};
+      s.tp = 0;
+      s.ph = "refuge";
+      pushLog(s, '🕯 Последняя ночь: изгнанники уходят в найденное укрытие и делят обязанности между собой.', 'system');
+    } else {
+      s.ph = "end";
+    }
+  } else {
+    startEventPhase(s);
+  }
+}
+
 function advanceAfterEventChoice(s){
   s.tp++;
-  const act = activeIdx(s);
-  if(s.tp >= act.length){
-    resolveEventPhase(s);
-    rollRefugeSearch(s);
-    if((s.eventPhase||0) >= EVENT_PHASES_TOTAL){
-      s.finalOutcome = computeFinalOutcome(s);
-      const r = ensureRefuge(s);
-      const crew = outcastIdx(s);
-      if(r.found && crew.length > 0){
-        // Последняя ночь: нашедший зовёт к себе всех изгнанников,
-        // и им предстоит распределить обязанности уже между собой
-        r.invited = true;
-        r.jobs = {};
-        s.tp = 0;
-        s.ph = "refuge";
-        pushLog(s, '🕯 Последняя ночь: изгнанники уходят в найденное укрытие и делят обязанности между собой.', 'system');
-      } else {
-        s.ph = "end";
-      }
-    } else {
-      startEventPhase(s);
-    }
-  }
+  maybeResolveEventPhase(s);
 }
 
 function resolveEventPhase(s){
@@ -2109,6 +2123,7 @@ function makeGame(names){
     eliminationsCount:0,
     twists,
     tieReason:null,
+    tieStreak:0,
     proposal:null,
     lastProposalNote:null,
     jobs:{},
@@ -2262,22 +2277,33 @@ function tallyAndEliminate(s){
   s.turnAbilityUsed = false;
   s.p.forEach(pl=>{ pl.shield = false; }); // щит расходуется на один подсчёт голосов, неважно, сработал он или нет
 
-  if(maxV <= 0 || topCandidates.length !== 1){
-    // ничья (несколько кандидатов набрали одинаковый максимум) — никого не исключаем.
-    // Даём один дополнительный раунд раскрытия, чтобы у группы появилась новая информация
-    // для принятия решения, а затем автоматически возвращаемся к голосованию.
-    s.ph = "tiebreak";
-    s.rd = 1;
-    s.tieReason = "tie";
-    pushLog(s, '⚖️ Голоса разделились поровну — никто не исключён.', 'vote');
-    return null;
+  const isTie = (maxV <= 0 || topCandidates.length !== 1);
+  let target;
+
+  if(isTie){
+    // Считаем ничьи подряд: одна — даём группе доп. раунд раскрытия и переголосовываем.
+    // Вторая ничья ПОДРЯД — тянуть дальше бессмысленно, дальше решает жребий, чтобы игра
+    // не зависала бесконечно на одной и той же паре/группе кандидатов.
+    s.tieStreak = (s.tieStreak||0) + 1;
+    if(s.tieStreak < 2){
+      s.ph = "tiebreak";
+      s.rd = 1;
+      s.tieReason = "tie";
+      pushLog(s, '⚖️ Голоса разделились поровну — никто не исключён.', 'vote');
+      return null;
+    }
+    const pool = (maxV>0 && topCandidates.length>0) ? topCandidates : activeIdx(s);
+    target = pick(pool);
+    pushLog(s, '🎲 Второй раз подряд равенство голосов — судьбу решил жребий: исключён(а) '+s.p[target].n+'.', 'vote');
+  } else {
+    target = topCandidates[0];
+    pushLog(s, '❌ Итог голосования: исключён(а) '+s.p[target].n+' ('+maxV+' голос(ов)).', 'vote');
   }
 
-  const target = topCandidates[0];
+  s.tieStreak = 0; // серия ничьих обрывается любым фактическим исключением
   s.p[target].e = true;
   s.p[target].r = ALL_CATS_MASK; // выбывший сразу полностью раскрывается всем, как в конце игры
   s.eliminationsCount = (s.eliminationsCount||0) + 1;
-  pushLog(s, '❌ Итог голосования: исключён(а) '+s.p[target].n+' ('+maxV+' голос(ов)).', 'vote');
 
   // проверяем, не пора ли раскрыть один из скрытых твистов
   if(Array.isArray(s.twists)){
@@ -3777,10 +3803,18 @@ function renderGame(s, code){
   if(s.ph==='event'){
     document.body.classList.remove('vote-mode');
     const event = s.currentEvent || EVENT_POOL[0];
+    const evAct = activeIdx(s);
+    const evTurnIdx = evAct[s.tp]; // undefined, когда все выжившие уже выбрали действие в этой фазе
+    const evTurnName = evTurnIdx!==undefined ? s.p[evTurnIdx].n : null;
+    const survivorsDone = evTurnIdx === undefined;
+    const outcastsReady = allOutcastsDecided(s);
     document.getElementById('statusLine').textContent = 'событие '+(s.eventPhase||1)+' из '+EVENT_PHASES_TOTAL;
 
     const evBanner = el('div',{class:'turn-banner'});
-    evBanner.appendChild(el('div',{html:'<span class="cursor">▮</span> Выбирает действие: <b>'+turnName+'</b>'}));
+    evBanner.appendChild(el('div',{html: survivorsDone
+      ? '<span class="cursor">▮</span> Все выжившие выбрали действие — ждём изгнанников…'
+      : '<span class="cursor">▮</span> Выбирает действие: <b>'+evTurnName+'</b>'
+    }));
     evBanner.appendChild(el('div',{class:'phase-pill', text:'СОБЫТИЕ '+(s.eventPhase||1)+'/'+EVENT_PHASES_TOTAL}));
     col.appendChild(evBanner);
 
@@ -3812,14 +3846,21 @@ function renderGame(s, code){
           ? 'Ты решил(а) помочь оставшимся в этой фазе. Если кто-то из них погибнет, у тебя есть шанс вернуться и занять его место в убежище.'
           : 'Ты ушёл(ушла) искать своё укрытие. Оставшимся от этого не легче, зато у изгнанников появляется шанс на собственное спасение.'
         }));
+        outcastPanel.appendChild(el('p',{class:'tiny', style:'margin-top:6px; color:var(--muted-2);',
+          text: survivorsDone ? 'Все выжившие уже выбрали действие — фаза завершится, как только решат остальные изгнанники.' : 'Ждём, пока все выжившие тоже выберут действие.'}));
       } else {
         outcastPanel.appendChild(el('p',{text:'Тебя исключили голосованием, но игра для тебя не окончена. Реши, что делать в эту фазу:'}));
+        if(survivorsDone){
+          outcastPanel.appendChild(el('p',{class:'tiny', style:'color:var(--card-danger);',
+            text:'Выжившие уже всё выбрали — фаза ждёт именно твоего решения.'}));
+        }
         const helpBtn = el('button',{class:'primary', text:'Помочь убежищу'});
         helpBtn.title = 'Небольшой бонус выжившим против события. Если кто-то погибнет, у тебя есть шанс занять его место.';
         helpBtn.onclick = ()=>{
           const next = JSON.parse(JSON.stringify(s));
           next.outcastChoices = next.outcastChoices || {};
           next.outcastChoices[myIdx] = 'help';
+          maybeResolveEventPhase(next);
           pushState(next);
         };
         const seekBtn = el('button',{class:'danger', style:'margin-left:10px;', text:'Искать своё укрытие'});
@@ -3828,6 +3869,7 @@ function renderGame(s, code){
           const next = JSON.parse(JSON.stringify(s));
           next.outcastChoices = next.outcastChoices || {};
           next.outcastChoices[myIdx] = 'search';
+          maybeResolveEventPhase(next);
           pushState(next);
         };
         outcastPanel.appendChild(helpBtn);
@@ -3839,9 +3881,18 @@ function renderGame(s, code){
       return;
     }
 
-    if(myIdx!==turnIdx){
+    if(survivorsDone){
       const waitPanel = el('div',{class:'panel fade-in-up', 'data-tag':'Действие'});
-      waitPanel.appendChild(el('p',{class:'tiny', html:'Сейчас выбирает <b>'+turnName+'</b>. Экран обновится сам, когда очередь дойдёт до тебя.'}));
+      waitPanel.appendChild(el('p',{class:'tiny', text: outcastsReady
+        ? 'Все решения приняты — секунду, применяем исход события.'
+        : 'Ты уже выбрал(а) действие. Осталось дождаться решения изгнанников — экран обновится сам.'}));
+      col.appendChild(waitPanel);
+      return;
+    }
+
+    if(myIdx!==evTurnIdx){
+      const waitPanel = el('div',{class:'panel fade-in-up', 'data-tag':'Действие'});
+      waitPanel.appendChild(el('p',{class:'tiny', html:'Сейчас выбирает <b>'+evTurnName+'</b>. Экран обновится сам, когда очередь дойдёт до тебя.'}));
       col.appendChild(waitPanel);
       return;
     }
