@@ -1067,6 +1067,219 @@
     .trait-cat{min-width:130px;}
   }
 
+  /* ---------- вход в профиль на главной ---------- */
+  .landing-account{ margin-top:6px; }
+  .account-chip{
+    display:inline-flex; align-items:center; gap:8px;
+    font-family:'Oswald',sans-serif;
+    font-size:12px; letter-spacing:1.5px; text-transform:uppercase;
+    padding:9px 16px;
+    border:1px solid var(--line); background:transparent; color:var(--muted);
+  }
+  .account-chip:hover{ border-color:var(--amber); color:var(--paper); background:transparent; }
+  .chip-av{ font-size:15px; }
+  .chip-sub{ color:var(--muted-2); }
+
+  /* ---------- окно обновлений ---------- */
+  .patchnotes{
+    max-width:760px;
+    margin:10px auto 0;
+    padding:0 20px 40px;
+  }
+  .patch-head{
+    display:flex; align-items:baseline; justify-content:space-between; gap:12px;
+    border-bottom:1px solid var(--line);
+    padding-bottom:8px; margin-bottom:14px;
+  }
+  .patch-title{
+    font-family:'Oswald',sans-serif;
+    font-size:12px; letter-spacing:3px; text-transform:uppercase; color:var(--amber);
+  }
+  .patch-current{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:10px; color:var(--muted-2); white-space:nowrap;
+  }
+  .patch-scroll{
+    max-height:340px; overflow-y:auto; padding-right:8px;
+  }
+  .patch-entry{
+    border-left:2px solid var(--line);
+    padding:0 0 0 14px;
+    margin-bottom:20px;
+  }
+  .patch-entry.latest{ border-left-color:var(--amber); }
+  .patch-entry-head{
+    display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; margin-bottom:8px;
+  }
+  .patch-ver{
+    font-family:'Russo One','Oswald',sans-serif;
+    font-size:15px; color:var(--paper); letter-spacing:1px;
+  }
+  .patch-entry.latest .patch-ver{ color:var(--amber); }
+  .patch-name{
+    font-family:'Oswald',sans-serif;
+    font-size:12px; letter-spacing:1.5px; text-transform:uppercase; color:var(--muted);
+  }
+  .patch-date{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:10px; color:var(--muted-2); margin-left:auto; white-space:nowrap;
+  }
+  .patch-list{ list-style:none; margin:0; padding:0; }
+  .patch-item{
+    display:flex; gap:9px; align-items:baseline;
+    font-size:12.5px; line-height:1.6; color:var(--muted);
+    padding:3px 0;
+  }
+  .patch-kind{
+    flex:0 0 auto;
+    font-family:'Oswald',sans-serif;
+    font-size:8.5px; letter-spacing:1.2px;
+    border:1px solid var(--line); padding:1px 5px;
+    color:var(--muted-2); white-space:nowrap;
+  }
+  .patch-item.kind-feature .patch-kind{ color:var(--turn-green); border-color:var(--turn-green); }
+  .patch-item.kind-fix .patch-kind{ color:var(--amber); border-color:var(--amber-dim); }
+  .patch-item.kind-balance .patch-kind{ color:var(--neon); border-color:var(--neon); }
+  .patch-text{ flex:1 1 auto; }
+
+  /* ---------- профиль и статистика ---------- */
+  .profile-head{ display:flex; align-items:center; gap:16px; }
+  .profile-avatar{
+    width:64px; height:64px; flex:0 0 64px;
+    border:2px solid var(--line);
+    display:flex; align-items:center; justify-content:center;
+    font-size:30px;
+  }
+  .profile-nick{
+    font-family:'Russo One','Oswald',sans-serif;
+    font-size:22px; text-transform:uppercase; letter-spacing:1px; color:var(--paper);
+    margin-bottom:4px;
+  }
+  .avatar-grid{
+    display:grid; grid-template-columns:repeat(auto-fill, minmax(48px,1fr));
+    gap:7px; margin-bottom:6px;
+  }
+  .avatar-cell{
+    aspect-ratio:1/1;
+    display:flex; align-items:center; justify-content:center;
+    font-size:22px; padding:0;
+    border:1px solid var(--line); background:var(--bg-0);
+    letter-spacing:0;
+  }
+  .avatar-cell:hover{ border-color:var(--muted); background:var(--bg-2); }
+  .avatar-cell.active{
+    border-color:var(--amber);
+    box-shadow:0 0 0 1px var(--amber) inset;
+    background:var(--bg-2);
+  }
+  .stat-grid{
+    display:grid; grid-template-columns:repeat(auto-fit, minmax(120px,1fr));
+    gap:8px; margin-bottom:16px;
+  }
+  .stat-cell{
+    border:1px solid var(--line); border-top:2px solid var(--line);
+    background:var(--bg-0); padding:12px 10px; text-align:center;
+  }
+  .stat-cell.accent{ border-top-color:var(--amber); }
+  .stat-value{
+    font-family:'Russo One','Oswald',sans-serif;
+    font-size:26px; color:var(--paper); line-height:1;
+  }
+  .stat-cell.accent .stat-value{ color:var(--amber); }
+  .stat-label{
+    font-family:'Oswald',sans-serif;
+    font-size:9px; letter-spacing:1.5px; text-transform:uppercase;
+    color:var(--muted-2); margin-top:6px;
+  }
+  .stat-list{ display:flex; flex-direction:column; }
+  .stat-line{
+    display:flex; justify-content:space-between; gap:12px;
+    padding:7px 0; border-bottom:1px solid var(--line-soft);
+    font-size:12px;
+  }
+  .stat-line .k{ color:var(--muted); }
+  .stat-line .v{ font-family:'IBM Plex Mono',monospace; color:var(--paper); }
+
+  /* ---------- плавающий док связи ---------- */
+  .comm-dock{
+    position:fixed; right:18px; bottom:18px; z-index:40;
+    width:310px; max-width:calc(100vw - 36px);
+    display:flex; flex-direction:column; gap:8px;
+    pointer-events:none;
+  }
+  .comm-dock > *{ pointer-events:auto; }
+  .comm-voice, .comm-chat{
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-left:2px solid var(--amber);
+    padding:10px 12px;
+    box-shadow:0 6px 22px rgba(0,0,0,.55);
+  }
+  .comm-head{
+    display:flex; align-items:center; gap:8px;
+  }
+  .comm-head.clickable{ cursor:pointer; }
+  .comm-title{
+    font-family:'Oswald',sans-serif;
+    font-size:10px; letter-spacing:2px; text-transform:uppercase; color:var(--amber);
+    flex:1 1 auto;
+  }
+  .comm-toggle{ color:var(--muted); font-size:11px; }
+  .chat-badge{
+    background:var(--card-danger); color:#fff;
+    font-family:'Oswald',sans-serif; font-size:9px;
+    padding:1px 6px; min-width:16px; text-align:center;
+  }
+  .comm-btn{
+    font-size:10.5px; padding:8px 11px; letter-spacing:1.2px;
+  }
+  .voice-list{ display:flex; flex-direction:column; gap:4px; margin-top:4px; }
+  .voice-person{
+    display:flex; align-items:center; gap:7px;
+    font-size:11.5px; color:var(--muted);
+  }
+  .voice-person.me{ color:var(--paper); }
+  .voice-dot{
+    width:7px; height:7px; border-radius:50%;
+    background:var(--line); flex:0 0 7px;
+  }
+  .voice-dot.on{ background:var(--turn-green); box-shadow:0 0 6px var(--turn-green); }
+  .voice-muted{
+    font-family:'Oswald',sans-serif; font-size:8.5px; letter-spacing:1px;
+    color:var(--card-danger); border:1px solid var(--card-danger); padding:0 4px;
+  }
+  .chat-log{
+    max-height:260px; overflow-y:auto;
+    margin:10px 0 8px;
+    display:flex; flex-direction:column; gap:8px;
+  }
+  .chat-msg{ border-left:2px solid var(--line-soft); padding-left:8px; }
+  .chat-msg.mine{ border-left-color:var(--amber); }
+  .chat-meta{ display:flex; align-items:baseline; gap:6px; margin-bottom:2px; }
+  .chat-av{ font-size:12px; }
+  .chat-name{
+    font-family:'Oswald',sans-serif;
+    font-size:10px; letter-spacing:1px; text-transform:uppercase; color:var(--muted);
+  }
+  .chat-msg.mine .chat-name{ color:var(--amber); }
+  .chat-time{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:9px; color:var(--muted-2); margin-left:auto;
+  }
+  .chat-body{
+    font-size:12px; line-height:1.5; color:var(--paper);
+    word-break:break-word; overflow-wrap:anywhere;
+  }
+  .chat-form{ display:flex; gap:6px; }
+  .chat-form input[type=text]{
+    flex:1 1 auto; margin-bottom:0; font-size:12px; padding:8px 10px;
+  }
+  @media(max-width:700px){
+    .comm-dock{ right:10px; left:10px; bottom:10px; width:auto; }
+    .chat-log{ max-height:180px; }
+    .patchnotes{ padding:0 16px 30px; }
+  }
+
   /* экраны без каркаса (ошибка конфига, комната не найдена) */
   main > .panel, main > details{margin-top:24px;}
   @media(max-width:700px){
@@ -1257,6 +1470,78 @@ const POOLS = {
 };
 
 // { t: текст катастрофы, fx: тип визуального эффекта для canvas }
+/* ---------------- Патчноут ----------------
+   Список обновлений для окна на главной странице. Новые записи добавляются
+   СВЕРХУ. Поле t у пункта: 'feature' — новое, 'fix' — исправление,
+   'balance' — правки баланса. */
+const CHANGELOG = [
+  {
+    version: "0.9.0",
+    date: "Август 2026",
+    title: "Связь, профили и патчноут",
+    items: [
+      { t:"feature", text:"Текстовый чат прямо в комнате — общайтесь, не выходя из игры." },
+      { t:"feature", text:"Голосовая связь: микрофон, отключение звука, индикатор говорящих." },
+      { t:"feature", text:"Профили игроков: регистрация, выбор аватара, личная статистика партий и побед." },
+      { t:"feature", text:"Окно обновлений на главной странице — вы его сейчас читаете." }
+    ]
+  },
+  {
+    version: "0.8.0",
+    date: "Август 2026",
+    title: "Внешний протокол и дикие животные",
+    items: [
+      { t:"feature", text:"Изгнанники получают общий голос на последнем голосовании — шанс вытащить наружу нужного человека." },
+      { t:"feature", text:"Выбор изгнанника: помочь убежищу или искать своё укрытие на поверхности." },
+      { t:"feature", text:"Найденное укрытие даёт изгнанникам отдельную ветку финала со своим распределением обязанностей." },
+      { t:"feature", text:"Встречи с дикими животными на вылазках: приручение даёт бонус к выживанию, провал бьёт по здоровью." },
+      { t:"feature", text:"Пять новых способностей, включая «Тайник» — второй личный предмет." }
+    ]
+  },
+  {
+    version: "0.7.0",
+    date: "Август 2026",
+    title: "Исправления механик",
+    items: [
+      { t:"fix", text:"Голосование больше не зацикливается: вторая ничья подряд решается жребием." },
+      { t:"fix", text:"Фаза событий ждёт решения изгнанников — кнопка помощи больше не пропадает." },
+      { t:"fix", text:"Возвращение изгнанника занимает место погибшего, а не отменяет его гибель." },
+      { t:"feature", text:"Сводка событий пишет время и итог каждого действия, способности выделены рамкой." }
+    ]
+  },
+  {
+    version: "0.6.0",
+    date: "Август 2026",
+    title: "Полный редизайн интерфейса",
+    items: [
+      { t:"feature", text:"Новая визуальная система: бетонная гамма, брутальная типографика, двухколоночная раскладка." },
+      { t:"feature", text:"Стартовый экран с мерцающим логотипом и эффектом искажения сигнала." },
+      { t:"feature", text:"Пять новых типов убежищ — всего пятнадцать вариантов." },
+      { t:"fix", text:"Исправлена типографика: шрифты без кириллицы заменены на полноценные." }
+    ]
+  }
+];
+const CHANGELOG_ITEM_LABEL = { feature:"НОВОЕ", fix:"ФИКС", balance:"БАЛАНС" };
+
+/* ---------------- Аватары профиля ----------------
+   Аватар — не загружаемый файл, а выбор из набора: так не нужен ни сторедж,
+   ни модерация чужих картинок, и всё остаётся в единой стилистике. */
+const AVATARS = [
+  { id:"a1", glyph:"◆", color:"#c8342a" },
+  { id:"a2", glyph:"◇", color:"#e0553f" },
+  { id:"a3", glyph:"▲", color:"#8a9457" },
+  { id:"a4", glyph:"▼", color:"#63d8d0" },
+  { id:"a5", glyph:"■", color:"#8a857a" },
+  { id:"a6", glyph:"●", color:"#ffb020" },
+  { id:"a7", glyph:"✦", color:"#b4c06e" },
+  { id:"a8", glyph:"☣", color:"#ff2f2f" },
+  { id:"a9", glyph:"☢", color:"#e8a33d" },
+  { id:"a10", glyph:"⌘", color:"#63d8d0" },
+  { id:"a11", glyph:"⚑", color:"#c8342a" },
+  { id:"a12", glyph:"✚", color:"#e8e2d6" }
+];
+function avatarById(id){ return AVATARS.find(a=>a.id===id) || AVATARS[0]; }
+
 const CATASTROPHES = [
   {t:"Ядерный конфликт уничтожил крупнейшие города. Поверхность заражена радиоактивными осадками.", fx:"ash"},
   {t:"Неизвестный вирус выкосил 90% населения планеты за три недели.", fx:"spores"},
@@ -1725,6 +2010,24 @@ function resolveEventPhase(s){
 
   casualties.forEach(idx=>{ s.p[idx].e = true; s.p[idx].r = ALL_CATS_MASK; });
 
+  // Построчный итог по каждому выжившему: что выбрал и получилось ли —
+  // раньше это оседало только в финальной сводке, а во время самой игры
+  // в сводке событий не было видно вообще ничего, кроме встреч с животными.
+  results.forEach(r=>{
+    const actionMeta = EVENT_ACTIONS.find(a=>a.id===r.action);
+    const actionName = actionMeta ? actionMeta.name : r.action;
+    pushLog(s, (r.success ? '✅ ' : '❌ ')+r.name+' — «'+actionName+'»: '+(r.success ? 'получилось' : 'не получилось')+'.',
+      r.success ? 'reveal' : 'vote');
+  });
+
+  if(casualties.length>0 && revived){
+    pushLog(s, '💀 '+casualties.map(i=>s.p[i].n).join(', ')+' погиб(ли). Освободившееся место занял(а) '+s.p[revived].n+', вернувшись(ись) из изгнания.', 'vote');
+  } else if(casualties.length>0){
+    pushLog(s, '💀 '+casualties.map(i=>s.p[i].n).join(', ')+' погиб(ли), защищая остальных.', 'vote');
+  } else if(event.favored==='attack'){
+    pushLog(s, '🛡 Угрозу удалось отбить — обошлось без потерь.', 'reveal');
+  }
+
   // Дикие встречи во время вылазок за припасами — только для тех, кто выбрал «Сбор»
   // и дожил до конца этой фазы (мёртвым уже не до приручения животных).
   survivors.forEach(i=>{
@@ -2073,7 +2376,10 @@ function pushLog(s, text, kind){
   const id = (s.eventFeedSeq||0) + 1;
   s.eventFeedSeq = id;
   feed.push({ id, kind: kind||'system', text, ts: Date.now() });
-  s.eventFeed = feed.length > 5 ? feed.slice(feed.length-5) : feed;
+  // Лимит поднят с 5 до 24: при 10 игроках одна фаза событий сама по себе
+  // даёт до ~22 строк (выбор действия + итог на каждого + сводка потерь),
+  // и со старым лимитом более ранние записи той же фазы вытеснялись мгновенно.
+  s.eventFeed = feed.length > 24 ? feed.slice(feed.length-24) : feed;
 }
 
 function activeIdx(s){
@@ -2124,6 +2430,7 @@ function makeGame(names){
     twists,
     tieReason:null,
     tieStreak:0,
+    startedAt: Date.now(), // уникальный идентификатор партии: по нему статистика начисляется ровно один раз
     proposal:null,
     lastProposalNote:null,
     jobs:{},
@@ -2364,7 +2671,17 @@ if(configOk){
   firebase.auth().onAuthStateChanged(user=>{
     if(user){
       authReady = true;
-      boot();
+      myUid = user.uid;
+      isAnonUser = !!user.isAnonymous;
+      loadMyProfile().then(()=>{ boot(); });
+    } else {
+      // Вышли из аккаунта — возвращаемся к анонимному режиму, чтобы игра
+      // продолжала работать по правилам безопасности Firebase.
+      myUid = null; myProfile = null; isAnonUser = true;
+      firebase.auth().signInAnonymously().catch(err=>{
+        console.error('Anonymous auth failed:', err);
+        renderAuthError(err);
+      });
     }
   });
   firebase.auth().signInAnonymously().catch(err=>{
@@ -2373,6 +2690,50 @@ if(configOk){
     renderAuthError(err);
   });
 }
+
+/* --- Регистрация / вход / выход --- */
+// Анонимный аккаунт апгрейдим до полноценного через linkWithCredential —
+// так сохраняется тот же uid, а значит и все уже занятые места в комнатах.
+function registerAccount(email, password, nick, avatarId){
+  const cred = firebase.auth.EmailAuthProvider.credential(email, password);
+  const user = firebase.auth().currentUser;
+  const linkPromise = (user && user.isAnonymous)
+    ? user.linkWithCredential(cred)
+    : firebase.auth().createUserWithEmailAndPassword(email, password);
+  return linkPromise.then(result=>{
+    const u = result.user || firebase.auth().currentUser;
+    myUid = u.uid;
+    isAnonUser = false;
+    myProfile = { nick: nick, avatar: avatarId, stats: blankStats() };
+    return saveMyProfile();
+  });
+}
+
+function loginAccount(email, password){
+  return firebase.auth().signInWithEmailAndPassword(email, password).then(result=>{
+    myUid = result.user.uid;
+    isAnonUser = false;
+    return loadMyProfile();
+  });
+}
+
+function logoutAccount(){
+  return firebase.auth().signOut();
+}
+
+function authErrorText(err){
+  const code = (err && err.code) || '';
+  if(code === 'auth/email-already-in-use') return 'Эта почта уже зарегистрирована — попробуй войти.';
+  if(code === 'auth/credential-already-in-use') return 'Эта почта уже привязана к другому аккаунту.';
+  if(code === 'auth/invalid-email') return 'Почта указана в неверном формате.';
+  if(code === 'auth/weak-password') return 'Пароль слишком простой — нужно минимум 6 символов.';
+  if(code === 'auth/wrong-password' || code === 'auth/invalid-credential') return 'Неверная почта или пароль.';
+  if(code === 'auth/user-not-found') return 'Аккаунт с такой почтой не найден.';
+  if(code === 'auth/too-many-requests') return 'Слишком много попыток. Подожди немного и попробуй снова.';
+  if(code === 'auth/operation-not-allowed') return 'В Firebase Console не включён вход по почте и паролю (Authentication → Sign-in method → Email/Password).';
+  return (err && err.message) ? err.message : 'Неизвестная ошибка.';
+}
+
 
 let currentRoom = null;
 let currentOffFn = null;
@@ -2392,6 +2753,7 @@ function roomLink(code){
 function subscribeRoom(code){
   if(currentOffFn) currentOffFn();
   currentRoom = code;
+  subscribeChat(code);
   const ref = db.ref('rooms/'+code);
   const handler = (snap)=>{
     const s = snap.val();
@@ -2479,6 +2841,310 @@ function subscribeRoom(code){
 function pushState(s){
   db.ref('rooms/'+currentRoom).set(s);
 }
+
+/* ---------------- Профиль игрока ----------------
+   Аккаунт не обязателен: можно играть анонимно, как раньше. Но если игрок
+   зарегистрировался, его партии считаются в статистику, а имя и аватар
+   подставляются автоматически. Профиль живёт в profiles/{uid}. */
+let myProfile = null;      // {nick, avatar, stats:{...}} или null у анонимов
+let myUid = null;
+let isAnonUser = true;
+
+function blankStats(){
+  return { games:0, wins:0, losses:0, survivedToDawn:0, eliminatedByVote:0,
+           refugeWins:0, animalsTamed:0, abilitiesUsed:0 };
+}
+
+function loadMyProfile(){
+  if(!myUid || isAnonUser){ myProfile = null; return Promise.resolve(null); }
+  return db.ref('profiles/'+myUid).once('value').then(snap=>{
+    const val = snap.val();
+    if(val){
+      myProfile = {
+        nick: val.nick || 'Выживший',
+        avatar: val.avatar || AVATARS[0].id,
+        stats: Object.assign(blankStats(), val.stats || {})
+      };
+    } else {
+      myProfile = null;
+    }
+    return myProfile;
+  }).catch(()=>{ myProfile = null; return null; });
+}
+
+function saveMyProfile(){
+  if(!myUid || isAnonUser || !myProfile) return Promise.resolve();
+  return db.ref('profiles/'+myUid).set({
+    nick: myProfile.nick,
+    avatar: myProfile.avatar,
+    stats: myProfile.stats,
+    updatedAt: Date.now()
+  });
+}
+
+// Начисление статистики по итогам партии. Вызывается один раз на игрока,
+// защита от повторного начисления — по идентификатору партии в localStorage:
+// экран финала перерисовывается при каждом обновлении состояния комнаты.
+function recordGameStats(s, myIdx){
+  if(!myUid || isAnonUser || !myProfile || myIdx < 0) return;
+  const gameKey = 'stats_done_' + currentRoom + '_' + (s.startedAt || '0');
+  try{ if(localStorage.getItem(gameKey)) return; }catch(e){}
+
+  const me = s.p[myIdx];
+  const survivedBunker = !me.e;
+  const refugeCrew = outcastIdx(s);
+  const inRefuge = me.e && s.refugeOutcome && refugeCrew.includes(myIdx);
+  const refugeSurvived = inRefuge && (s.refugeOutcome.score >= 1);
+
+  myProfile.stats.games += 1;
+  if(survivedBunker){
+    myProfile.stats.wins += 1;
+    myProfile.stats.survivedToDawn += 1;
+  } else if(refugeSurvived){
+    myProfile.stats.wins += 1;
+    myProfile.stats.refugeWins += 1;
+  } else {
+    myProfile.stats.losses += 1;
+  }
+  if(me.e) myProfile.stats.eliminatedByVote += 1;
+  myProfile.stats.abilitiesUsed += (me.au || 0);
+  const tamedByMe = (s.tamedAnimals||[]).filter(t=>t.idx===myIdx).length;
+  myProfile.stats.animalsTamed += tamedByMe;
+
+  try{ localStorage.setItem(gameKey, '1'); }catch(e){}
+  saveMyProfile();
+}
+
+/* ================= ЧАТ КОМНАТЫ ================= */
+/* Текстовый чат живёт в rooms/{code}/chat, отдельной подпиской — чтобы
+   сообщения не тащили за собой перерисовку всего игрового состояния. */
+let chatMessages = [];
+let chatOffFn = null;
+let chatUnread = 0;
+let chatOpen = false;
+
+function chatDisplayName(s, idx){
+  if(myProfile && myProfile.nick) return myProfile.nick;
+  if(s && idx >= 0 && s.p[idx]) return s.p[idx].n;
+  return 'Наблюдатель';
+}
+
+function subscribeChat(code){
+  if(chatOffFn) chatOffFn();
+  chatMessages = [];
+  const ref = db.ref('rooms/'+code+'/chat').limitToLast(80);
+  const handler = snap=>{
+    const val = snap.val() || {};
+    const list = Object.keys(val).map(k=>Object.assign({key:k}, val[k]));
+    list.sort((a,b)=>(a.ts||0)-(b.ts||0));
+    const grew = list.length > chatMessages.length;
+    chatMessages = list;
+    if(grew && !chatOpen){
+      const last = list[list.length-1];
+      if(last && last.uid !== myUid) chatUnread++;
+    }
+    renderChatDock();
+  };
+  ref.on('value', handler);
+  chatOffFn = ()=>{ ref.off('value', handler); chatOffFn = null; };
+}
+
+function sendChatMessage(text, s, myIdx){
+  const clean = String(text||'').trim().slice(0, 400);
+  if(!clean || !currentRoom) return Promise.resolve();
+  return db.ref('rooms/'+currentRoom+'/chat').push({
+    uid: myUid || 'anon',
+    name: chatDisplayName(s, myIdx),
+    avatar: (myProfile && myProfile.avatar) ? myProfile.avatar : null,
+    text: clean,
+    ts: Date.now()
+  });
+}
+
+/* ================= ГОЛОСОВОЙ ЧАТ (WebRTC) =================
+   Схема mesh: каждый участник держит по соединению с каждым другим.
+   Для 4-10 человек это нормально. Сигналинг идёт через Firebase:
+   rooms/{code}/rtc/{peerId}/... Инициатором соединения всегда выступает
+   тот, чей peerId «меньше» — так две стороны не создают offer одновременно.
+
+   ВАЖНО: работает только по HTTPS (или на localhost) и требует разрешения
+   на микрофон. Используется публичный STUN Google; TURN-сервера нет, поэтому
+   в редких «строгих» NAT/корпоративных сетях соединение может не установиться. */
+const RTC_CONFIG = { iceServers:[
+  { urls:'stun:stun.l.google.com:19302' },
+  { urls:'stun:stun1.l.google.com:19302' }
+]};
+
+let voiceActive = false;
+let voiceMuted = false;
+let localStream = null;
+let peers = {};             // peerId -> {pc, audioEl, name}
+let voicePeersMeta = {};    // peerId -> {name, speaking}
+let rtcOffFns = [];
+let myPeerId = null;
+
+function voiceSupported(){
+  return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.RTCPeerConnection);
+}
+
+async function startVoice(s, myIdx){
+  if(voiceActive || !currentRoom) return;
+  if(!voiceSupported()){
+    alert('Браузер не поддерживает голосовую связь, либо страница открыта не по HTTPS.');
+    return;
+  }
+  try{
+    localStream = await navigator.mediaDevices.getUserMedia({
+      audio:{ echoCancellation:true, noiseSuppression:true, autoGainControl:true },
+      video:false
+    });
+  }catch(err){
+    alert('Не удалось получить доступ к микрофону: '+(err && err.message ? err.message : err));
+    return;
+  }
+  voiceActive = true;
+  voiceMuted = false;
+  myPeerId = (myUid || myDeviceId) + '_' + Math.random().toString(36).slice(2,7);
+
+  const myName = chatDisplayName(s, myIdx);
+  const presenceRef = db.ref('rooms/'+currentRoom+'/voice/'+myPeerId);
+  presenceRef.set({ name: myName, ts: Date.now() });
+  presenceRef.onDisconnect().remove();
+
+  // следим за составом голосовой комнаты
+  const voiceRef = db.ref('rooms/'+currentRoom+'/voice');
+  const voiceHandler = snap=>{
+    const val = snap.val() || {};
+    voicePeersMeta = {};
+    Object.keys(val).forEach(pid=>{ voicePeersMeta[pid] = { name:(val[pid]||{}).name || '—' }; });
+    // подключаемся к новым участникам
+    Object.keys(val).forEach(pid=>{
+      if(pid === myPeerId || peers[pid]) return;
+      // Инициатор — тот, чей id лексикографически меньше: иначе обе стороны
+      // создадут offer одновременно и соединение развалится.
+      if(myPeerId < pid) createPeer(pid, true);
+      else createPeer(pid, false);
+    });
+    // отключаем ушедших
+    Object.keys(peers).forEach(pid=>{ if(!val[pid]) closePeer(pid); });
+    renderVoiceDock();
+  };
+  voiceRef.on('value', voiceHandler);
+  rtcOffFns.push(()=>voiceRef.off('value', voiceHandler));
+
+  // входящие сигналы лично мне
+  const inbox = db.ref('rooms/'+currentRoom+'/rtc/'+myPeerId);
+  const inboxHandler = async snap=>{
+    const val = snap.val();
+    if(!val) return;
+    for(const fromId of Object.keys(val)){
+      const msg = val[fromId];
+      if(!msg) continue;
+      await handleSignal(fromId, msg);
+      db.ref('rooms/'+currentRoom+'/rtc/'+myPeerId+'/'+fromId).remove();
+    }
+  };
+  inbox.on('value', inboxHandler);
+  rtcOffFns.push(()=>inbox.off('value', inboxHandler));
+  rtcOffFns.push(()=>presenceRef.remove());
+
+  renderVoiceDock();
+}
+
+function sendSignal(toPeerId, payload){
+  if(!currentRoom || !myPeerId) return;
+  db.ref('rooms/'+currentRoom+'/rtc/'+toPeerId+'/'+myPeerId).set(payload);
+}
+
+function createPeer(peerId, isInitiator){
+  if(peers[peerId]) return peers[peerId];
+  const pc = new RTCPeerConnection(RTC_CONFIG);
+  const audioEl = document.createElement('audio');
+  audioEl.autoplay = true;
+  audioEl.playsInline = true;
+  document.body.appendChild(audioEl);
+
+  if(localStream){
+    localStream.getTracks().forEach(track=>pc.addTrack(track, localStream));
+  }
+  pc.ontrack = ev=>{ audioEl.srcObject = ev.streams[0]; };
+  pc.onicecandidate = ev=>{
+    if(ev.candidate) sendSignal(peerId, { type:'ice', candidate: JSON.stringify(ev.candidate) });
+  };
+  pc.onconnectionstatechange = ()=>{
+    if(pc.connectionState === 'failed' || pc.connectionState === 'closed') closePeer(peerId);
+    renderVoiceDock();
+  };
+
+  peers[peerId] = { pc, audioEl, pendingIce:[] };
+
+  if(isInitiator){
+    pc.createOffer()
+      .then(offer=>pc.setLocalDescription(offer).then(()=>offer))
+      .then(offer=>sendSignal(peerId, { type:'offer', sdp: JSON.stringify(offer) }))
+      .catch(err=>console.error('offer error', err));
+  }
+  return peers[peerId];
+}
+
+async function handleSignal(fromId, msg){
+  let peer = peers[fromId];
+  if(!peer){ peer = createPeer(fromId, false); }
+  const pc = peer.pc;
+  try{
+    if(msg.type === 'offer'){
+      await pc.setRemoteDescription(new RTCSessionDescription(JSON.parse(msg.sdp)));
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      sendSignal(fromId, { type:'answer', sdp: JSON.stringify(answer) });
+      // применяем ICE, пришедшие до установки описания
+      peer.pendingIce.forEach(c=>pc.addIceCandidate(new RTCIceCandidate(c)).catch(()=>{}));
+      peer.pendingIce = [];
+    } else if(msg.type === 'answer'){
+      await pc.setRemoteDescription(new RTCSessionDescription(JSON.parse(msg.sdp)));
+      peer.pendingIce.forEach(c=>pc.addIceCandidate(new RTCIceCandidate(c)).catch(()=>{}));
+      peer.pendingIce = [];
+    } else if(msg.type === 'ice'){
+      const cand = JSON.parse(msg.candidate);
+      if(pc.remoteDescription && pc.remoteDescription.type){
+        await pc.addIceCandidate(new RTCIceCandidate(cand));
+      } else {
+        peer.pendingIce.push(cand); // описание ещё не установлено — придержим
+      }
+    }
+  }catch(err){ console.error('signal error', err); }
+}
+
+function closePeer(peerId){
+  const peer = peers[peerId];
+  if(!peer) return;
+  try{ peer.pc.close(); }catch(e){}
+  if(peer.audioEl && peer.audioEl.parentNode) peer.audioEl.parentNode.removeChild(peer.audioEl);
+  delete peers[peerId];
+}
+
+function toggleMute(){
+  voiceMuted = !voiceMuted;
+  if(localStream) localStream.getAudioTracks().forEach(t=>{ t.enabled = !voiceMuted; });
+  renderVoiceDock();
+}
+
+function stopVoice(){
+  if(!voiceActive) return;
+  voiceActive = false;
+  Object.keys(peers).forEach(closePeer);
+  rtcOffFns.forEach(fn=>{ try{ fn(); }catch(e){} });
+  rtcOffFns = [];
+  if(localStream){ localStream.getTracks().forEach(t=>t.stop()); localStream = null; }
+  if(currentRoom && myPeerId){
+    db.ref('rooms/'+currentRoom+'/rtc/'+myPeerId).remove();
+    db.ref('rooms/'+currentRoom+'/voice/'+myPeerId).remove();
+  }
+  myPeerId = null;
+  voicePeersMeta = {};
+  renderVoiceDock();
+}
+window.addEventListener('beforeunload', ()=>{ try{ stopVoice(); }catch(e){} });
 
 /* ---------------- Идентификация игрока на этом устройстве ---------------- */
 // Каждый браузер получает свой случайный deviceId, который сохраняется локально.
@@ -2761,10 +3427,363 @@ function renderRoomMissing(code){
   app.appendChild(panel);
 }
 
+/* ================= UI: док чата и голосовой связи ================= */
+let dockState = { s:null, myIdx:-1 };
+
+function ensureDock(){
+  let dock = document.getElementById('commDock');
+  if(!dock){
+    dock = el('div',{class:'comm-dock', id:'commDock'});
+    dock.appendChild(el('div',{class:'comm-voice', id:'voicePane'}));
+    dock.appendChild(el('div',{class:'comm-chat', id:'chatPane'}));
+    document.body.appendChild(dock);
+  }
+  return dock;
+}
+
+function removeDock(){
+  const dock = document.getElementById('commDock');
+  if(dock && dock.parentNode) dock.parentNode.removeChild(dock);
+}
+
+function renderVoiceDock(){
+  const dock = document.getElementById('commDock');
+  if(!dock) return;
+  const pane = document.getElementById('voicePane');
+  if(!pane) return;
+  pane.innerHTML = '';
+
+  const head = el('div',{class:'comm-head'});
+  head.appendChild(el('span',{class:'comm-title', text:'Голосовая связь'}));
+  pane.appendChild(head);
+
+  if(!voiceActive){
+    const joinBtn = el('button',{class:'primary comm-btn', text:'🎙 Подключить микрофон'});
+    joinBtn.onclick = ()=>startVoice(dockState.s, dockState.myIdx);
+    pane.appendChild(joinBtn);
+    if(!voiceSupported()){
+      pane.appendChild(el('p',{class:'tiny', style:'margin-top:6px;',
+        text:'Голос недоступен: нужен HTTPS и современный браузер.'}));
+    }
+    return;
+  }
+
+  const row = el('div',{class:'row', style:'gap:6px; margin-bottom:8px;'});
+  const muteBtn = el('button',{class: voiceMuted ? 'danger comm-btn' : 'ghost comm-btn',
+    text: voiceMuted ? '🔇 Микрофон выключен' : '🎙 Микрофон включён'});
+  muteBtn.onclick = toggleMute;
+  row.appendChild(muteBtn);
+  const leaveBtn = el('button',{class:'ghost comm-btn', text:'Выйти'});
+  leaveBtn.onclick = stopVoice;
+  row.appendChild(leaveBtn);
+  pane.appendChild(row);
+
+  const ids = Object.keys(voicePeersMeta);
+  const list = el('div',{class:'voice-list'});
+  ids.forEach(pid=>{
+    const meta = voicePeersMeta[pid] || {};
+    const isMe = pid === myPeerId;
+    const connected = isMe || (peers[pid] && peers[pid].pc &&
+      (peers[pid].pc.connectionState === 'connected' || peers[pid].pc.connectionState === 'completed'));
+    const item = el('div',{class:'voice-person'+(isMe?' me':'')});
+    item.appendChild(el('span',{class:'voice-dot'+(connected?' on':'')}));
+    item.appendChild(el('span',{text: meta.name + (isMe ? ' (ты)' : '')}));
+    if(isMe && voiceMuted) item.appendChild(el('span',{class:'voice-muted', text:'выкл'}));
+    list.appendChild(item);
+  });
+  if(ids.length <= 1){
+    list.appendChild(el('p',{class:'tiny', text:'Пока ты один в голосовом канале.'}));
+  }
+  pane.appendChild(list);
+}
+
+function renderChatDock(){
+  const dock = document.getElementById('commDock');
+  if(!dock) return;
+  const pane = document.getElementById('chatPane');
+  if(!pane) return;
+
+  // сохраняем текст, который игрок уже набрал, чтобы перерисовка его не стёрла
+  const oldInput = document.getElementById('chatInput');
+  const draft = oldInput ? oldInput.value : '';
+  const wasFocused = oldInput && document.activeElement === oldInput;
+
+  pane.innerHTML = '';
+  pane.className = 'comm-chat' + (chatOpen ? ' open' : '');
+
+  const head = el('div',{class:'comm-head clickable'});
+  head.appendChild(el('span',{class:'comm-title', text:'Чат комнаты'}));
+  if(!chatOpen && chatUnread > 0){
+    head.appendChild(el('span',{class:'chat-badge', text:String(chatUnread)}));
+  }
+  head.appendChild(el('span',{class:'comm-toggle', text: chatOpen ? '▾' : '▴'}));
+  head.onclick = ()=>{
+    chatOpen = !chatOpen;
+    if(chatOpen) chatUnread = 0;
+    renderChatDock();
+    if(chatOpen){
+      const inp = document.getElementById('chatInput');
+      if(inp) inp.focus();
+    }
+  };
+  pane.appendChild(head);
+
+  if(!chatOpen) return;
+
+  const log = el('div',{class:'chat-log', id:'chatLog'});
+  if(chatMessages.length === 0){
+    log.appendChild(el('p',{class:'tiny', text:'Сообщений пока нет. Напиши первым.'}));
+  }
+  chatMessages.forEach(m=>{
+    const mine = m.uid && m.uid === myUid;
+    const line = el('div',{class:'chat-msg'+(mine?' mine':'')});
+    const av = m.avatar ? avatarById(m.avatar) : null;
+    const meta = el('div',{class:'chat-meta'});
+    if(av) meta.appendChild(el('span',{class:'chat-av', style:'color:'+av.color, text:av.glyph}));
+    meta.appendChild(el('span',{class:'chat-name', text:m.name || '—'}));
+    if(m.ts){
+      const d = new Date(m.ts);
+      meta.appendChild(el('span',{class:'chat-time',
+        text:String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')}));
+    }
+    line.appendChild(meta);
+    line.appendChild(el('div',{class:'chat-body', text:m.text || ''}));
+    log.appendChild(line);
+  });
+  pane.appendChild(log);
+
+  const form = el('div',{class:'chat-form'});
+  const input = el('input',{type:'text', id:'chatInput', placeholder:'Написать сообщение…', maxlength:'400'});
+  input.value = draft;
+  const send = ()=>{
+    const v = input.value;
+    if(!v.trim()) return;
+    input.value = '';
+    sendChatMessage(v, dockState.s, dockState.myIdx);
+  };
+  input.onkeydown = ev=>{ if(ev.key === 'Enter'){ ev.preventDefault(); send(); } };
+  const sendBtn = el('button',{class:'primary comm-btn', text:'▶'});
+  sendBtn.onclick = send;
+  form.appendChild(input);
+  form.appendChild(sendBtn);
+  pane.appendChild(form);
+
+  log.scrollTop = log.scrollHeight;
+  if(wasFocused){ input.focus(); input.setSelectionRange(draft.length, draft.length); }
+}
+
+function mountCommDock(s, myIdx){
+  dockState = { s, myIdx };
+  ensureDock();
+  renderVoiceDock();
+  renderChatDock();
+}
+
+/* ================= UI: профиль игрока ================= */
+function renderProfileScreen(){
+  document.getElementById('statusLine').textContent = myProfile ? 'профиль' : 'вход и регистрация';
+  document.body.classList.remove('hide-chrome');
+  const app = document.getElementById('app');
+  app.innerHTML = '';
+
+  const shell = el('div',{class:'shell'});
+  const col = el('div',{class:'col'});
+  const rail = el('aside',{class:'rail'});
+  shell.appendChild(col); shell.appendChild(rail);
+  app.appendChild(shell);
+
+  const back = el('button',{class:'ghost', style:'margin-bottom:16px;', text:'← На главную'});
+  back.onclick = ()=>renderLanding();
+  col.appendChild(back);
+
+  if(myProfile && !isAnonUser){
+    renderProfileView(col, rail);
+  } else {
+    renderAuthForms(col, rail);
+  }
+}
+
+function renderProfileView(col, rail){
+  const av = avatarById(myProfile.avatar);
+  const panel = el('div',{class:'panel', 'data-tag':'Профиль'});
+
+  const headRow = el('div',{class:'profile-head'});
+  headRow.appendChild(el('div',{class:'profile-avatar', style:'color:'+av.color+'; border-color:'+av.color, text:av.glyph}));
+  const nameBox = el('div');
+  nameBox.appendChild(el('div',{class:'profile-nick', text:myProfile.nick}));
+  nameBox.appendChild(el('div',{class:'tiny', text:'Аккаунт подтверждён · статистика ведётся'}));
+  headRow.appendChild(nameBox);
+  panel.appendChild(headRow);
+
+  panel.appendChild(el('p',{class:'tiny', style:'margin-top:14px; margin-bottom:6px;', text:'Сменить аватар:'}));
+  const grid = el('div',{class:'avatar-grid'});
+  AVATARS.forEach(a=>{
+    const cell = el('button',{class:'avatar-cell'+(a.id===myProfile.avatar?' active':''),
+      style:'color:'+a.color, text:a.glyph});
+    cell.onclick = ()=>{
+      myProfile.avatar = a.id;
+      saveMyProfile().then(()=>renderProfileScreen());
+    };
+    grid.appendChild(cell);
+  });
+  panel.appendChild(grid);
+
+  const logout = el('button',{class:'danger', style:'margin-top:16px;', text:'Выйти из аккаунта'});
+  logout.onclick = ()=>{
+    if(confirm('Выйти из аккаунта? Статистика сохранится, войти можно будет снова.')){
+      logoutAccount().then(()=>renderLanding());
+    }
+  };
+  panel.appendChild(logout);
+  col.appendChild(panel);
+
+  // ---- статистика ----
+  const st = myProfile.stats || blankStats();
+  const winRate = st.games > 0 ? Math.round(st.wins / st.games * 100) : 0;
+  const statsPanel = el('div',{class:'panel', 'data-tag':'Статистика'});
+  const statGrid = el('div',{class:'stat-grid'});
+  const addStat = (label, value, accent)=>{
+    const cell = el('div',{class:'stat-cell'+(accent?' accent':'')});
+    cell.appendChild(el('div',{class:'stat-value', text:String(value)}));
+    cell.appendChild(el('div',{class:'stat-label', text:label}));
+    statGrid.appendChild(cell);
+  };
+  addStat('Партий сыграно', st.games);
+  addStat('Побед', st.wins, true);
+  addStat('Поражений', st.losses);
+  addStat('Процент побед', winRate + '%', true);
+  statsPanel.appendChild(statGrid);
+
+  const detail = el('div',{class:'stat-list'});
+  const addLine = (k,v)=>{
+    const row = el('div',{class:'stat-line'});
+    row.appendChild(el('span',{class:'k', text:k}));
+    row.appendChild(el('span',{class:'v', text:String(v)}));
+    detail.appendChild(row);
+  };
+  addLine('Дожил(а) до рассвета в убежище', st.survivedToDawn);
+  addLine('Выжил(а) во «Внешнем протоколе»', st.refugeWins);
+  addLine('Исключён(а) голосованием', st.eliminatedByVote);
+  addLine('Приручено животных', st.animalsTamed);
+  addLine('Использовано способностей', st.abilitiesUsed);
+  statsPanel.appendChild(detail);
+  col.appendChild(statsPanel);
+
+  const info = el('div',{class:'panel', 'data-tag':'Как считается'});
+  info.appendChild(el('p',{class:'tiny', text:'Победой считается любой исход, в котором ты дожил(а) до рассвета: либо остался(ась) в убежище, либо выжил(а) вместе с изгнанниками во «Внешнем протоколе». Статистика начисляется один раз за партию, на финальном экране.'}));
+  rail.appendChild(info);
+}
+
+function renderAuthForms(col, rail){
+  const panel = el('div',{class:'panel', 'data-tag':'Аккаунт'});
+  const tabs = el('div',{class:'tabs'});
+  const tabReg = el('div',{class:'tab active', text:'Регистрация'});
+  const tabLogin = el('div',{class:'tab', text:'Вход'});
+  tabs.appendChild(tabReg); tabs.appendChild(tabLogin);
+  panel.appendChild(tabs);
+  const body = el('div');
+  panel.appendChild(body);
+  col.appendChild(panel);
+
+  let chosenAvatar = AVATARS[0].id;
+
+  function showRegister(){
+    tabReg.className = 'tab active'; tabLogin.className = 'tab';
+    body.innerHTML = '';
+    body.appendChild(el('p',{class:'tiny', style:'margin-bottom:12px;',
+      text:'Аккаунт нужен только для статистики и аватара — играть можно и без него.'}));
+
+    body.appendChild(el('label',{text:'Никнейм'}));
+    const nick = el('input',{type:'text', maxlength:'20', placeholder:'Как тебя звать'});
+    body.appendChild(nick);
+
+    body.appendChild(el('label',{text:'Почта'}));
+    const email = el('input',{type:'text', placeholder:'you@example.com'});
+    body.appendChild(email);
+
+    body.appendChild(el('label',{text:'Пароль (минимум 6 символов)'}));
+    const pass = el('input',{type:'text', placeholder:'••••••'});
+    pass.setAttribute('type','password');
+    body.appendChild(pass);
+
+    body.appendChild(el('label',{text:'Аватар'}));
+    const grid = el('div',{class:'avatar-grid'});
+    AVATARS.forEach(a=>{
+      const cell = el('button',{class:'avatar-cell'+(a.id===chosenAvatar?' active':''),
+        style:'color:'+a.color, text:a.glyph});
+      cell.onclick = ()=>{
+        chosenAvatar = a.id;
+        Array.from(grid.children).forEach(c=>c.classList.remove('active'));
+        cell.classList.add('active');
+      };
+      grid.appendChild(cell);
+    });
+    body.appendChild(grid);
+
+    const err = el('div',{class:'error-msg'});
+    const btn = el('button',{class:'primary', style:'margin-top:14px;', text:'Создать аккаунт'});
+    btn.onclick = ()=>{
+      err.textContent = '';
+      const n = nick.value.trim();
+      if(n.length < 2){ err.textContent = 'Никнейм слишком короткий.'; return; }
+      if(!email.value.trim()){ err.textContent = 'Укажи почту.'; return; }
+      if(pass.value.length < 6){ err.textContent = 'Пароль должен быть не короче 6 символов.'; return; }
+      btn.disabled = true; btn.textContent = 'Создаём…';
+      registerAccount(email.value.trim(), pass.value, n, chosenAvatar)
+        .then(()=>renderProfileScreen())
+        .catch(e=>{
+          err.textContent = authErrorText(e);
+          btn.disabled = false; btn.textContent = 'Создать аккаунт';
+        });
+    };
+    body.appendChild(btn);
+    body.appendChild(err);
+  }
+
+  function showLogin(){
+    tabLogin.className = 'tab active'; tabReg.className = 'tab';
+    body.innerHTML = '';
+    body.appendChild(el('label',{text:'Почта'}));
+    const email = el('input',{type:'text', placeholder:'you@example.com'});
+    body.appendChild(email);
+    body.appendChild(el('label',{text:'Пароль'}));
+    const pass = el('input',{type:'text'});
+    pass.setAttribute('type','password');
+    body.appendChild(pass);
+    const err = el('div',{class:'error-msg'});
+    const btn = el('button',{class:'primary', style:'margin-top:14px;', text:'Войти'});
+    btn.onclick = ()=>{
+      err.textContent = '';
+      btn.disabled = true; btn.textContent = 'Входим…';
+      loginAccount(email.value.trim(), pass.value)
+        .then(()=>renderProfileScreen())
+        .catch(e=>{
+          err.textContent = authErrorText(e);
+          btn.disabled = false; btn.textContent = 'Войти';
+        });
+    };
+    body.appendChild(btn);
+    body.appendChild(err);
+  }
+
+  tabReg.onclick = showRegister;
+  tabLogin.onclick = showLogin;
+  showRegister();
+
+  const note = el('div',{class:'panel', 'data-tag':'Зачем это'});
+  note.appendChild(el('p',{class:'tiny', text:'Профиль хранит никнейм, аватар и статистику партий. Без аккаунта игра работает полностью — просто результаты не сохраняются между сессиями.'}));
+  rail.appendChild(note);
+}
+
 function renderLanding(){
   document.getElementById('statusLine').textContent = 'готов к подключению';
   document.body.classList.remove('vote-mode');
   document.body.classList.add('hide-chrome'); // верхнюю шапку с названием прячем — до кнопки «Начать игру»
+  // Выходим из комнаты: гасим голос, чат и плавающий док
+  try{ stopVoice(); }catch(e){}
+  if(chatOffFn) chatOffFn();
+  chatMessages = []; chatUnread = 0; chatOpen = false;
+  removeDock();
   setVfx(null);
   const app = document.getElementById('app');
   app.innerHTML = '';
@@ -2790,7 +3809,52 @@ function renderLanding(){
   };
   landing.appendChild(startBtn);
 
+  // ---- вход в профиль / приветствие ----
+  const accRow = el('div',{class:'landing-account'});
+  if(myProfile && !isAnonUser){
+    const av = avatarById(myProfile.avatar);
+    const chip = el('button',{class:'account-chip'});
+    chip.appendChild(el('span',{class:'chip-av', style:'color:'+av.color, text:av.glyph}));
+    chip.appendChild(el('span',{text:myProfile.nick}));
+    chip.appendChild(el('span',{class:'chip-sub', text:'· профиль'}));
+    chip.onclick = ()=>renderProfileScreen();
+    accRow.appendChild(chip);
+  } else {
+    const loginBtn = el('button',{class:'ghost account-chip', text:'Войти или создать профиль'});
+    loginBtn.onclick = ()=>renderProfileScreen();
+    accRow.appendChild(loginBtn);
+  }
+  landing.appendChild(accRow);
+
   app.appendChild(landing);
+
+  // ---- окно обновлений ----
+  const notes = el('section',{class:'patchnotes'});
+  const nHead = el('div',{class:'patch-head'});
+  nHead.appendChild(el('span',{class:'patch-title', text:'Обновления'}));
+  nHead.appendChild(el('span',{class:'patch-current', text:'Текущая версия · '+CHANGELOG[0].version}));
+  notes.appendChild(nHead);
+
+  const scroll = el('div',{class:'patch-scroll'});
+  CHANGELOG.forEach((entry, i)=>{
+    const block = el('article',{class:'patch-entry'+(i===0?' latest':'')});
+    const top = el('div',{class:'patch-entry-head'});
+    top.appendChild(el('span',{class:'patch-ver', text:entry.version}));
+    top.appendChild(el('span',{class:'patch-name', text:entry.title}));
+    top.appendChild(el('span',{class:'patch-date', text:entry.date}));
+    block.appendChild(top);
+    const ul = el('ul',{class:'patch-list'});
+    entry.items.forEach(it=>{
+      const li = el('li',{class:'patch-item kind-'+it.t});
+      li.appendChild(el('span',{class:'patch-kind', text:CHANGELOG_ITEM_LABEL[it.t] || 'НОВОЕ'}));
+      li.appendChild(el('span',{class:'patch-text', text:it.text}));
+      ul.appendChild(li);
+    });
+    block.appendChild(ul);
+    scroll.appendChild(block);
+  });
+  notes.appendChild(scroll);
+  app.appendChild(notes);
 }
 
 function renderLobby(){
@@ -3510,6 +4574,8 @@ function renderGame(s, code){
   app.appendChild(shell);
 
   const myIdx = myPlayerIdx(s);
+  mountCommDock(s, myIdx);
+  if(s.ph === 'end') recordGameStats(s, myIdx);
 
   const badgePanel = el('div',{class:'panel', 'data-tag':'Комната'});
   badgePanel.appendChild(roomBadgeRow(code));
@@ -3860,6 +4926,7 @@ function renderGame(s, code){
           const next = JSON.parse(JSON.stringify(s));
           next.outcastChoices = next.outcastChoices || {};
           next.outcastChoices[myIdx] = 'help';
+          pushLog(next, '🕯 '+s.p[myIdx].n+' (изгнанник) решил(а) помочь убежищу.', 'system');
           maybeResolveEventPhase(next);
           pushState(next);
         };
@@ -3869,6 +4936,7 @@ function renderGame(s, code){
           const next = JSON.parse(JSON.stringify(s));
           next.outcastChoices = next.outcastChoices || {};
           next.outcastChoices[myIdx] = 'search';
+          pushLog(next, '🕯 '+s.p[myIdx].n+' (изгнанник) уходит искать своё укрытие.', 'system');
           maybeResolveEventPhase(next);
           pushState(next);
         };
@@ -3908,6 +4976,7 @@ function renderGame(s, code){
         const next = JSON.parse(JSON.stringify(s));
         next.eventChoices = next.eventChoices || {};
         next.eventChoices[myIdx] = a.id;
+        pushLog(next, '🎯 '+s.p[myIdx].n+' выбирает: «'+a.name+'».', 'system');
         advanceAfterEventChoice(next);
         pushState(next);
       };
