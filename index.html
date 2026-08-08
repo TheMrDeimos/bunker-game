@@ -1284,6 +1284,14 @@
   }
   @media (prefers-reduced-motion: reduce){ .lobby-dot{ animation:none; opacity:.7; } }
 
+  .seat-reserved{
+    font-family:'Oswald',sans-serif;
+    font-size:8.5px; letter-spacing:1.2px; text-transform:uppercase;
+    color:var(--neon); border:1px solid var(--neon);
+    padding:1px 5px; white-space:nowrap; margin-left:auto;
+  }
+  .lobby-person .seat-reserved{ margin-left:8px; }
+
   /* ---------- всплывающее приглашение ---------- */
   .invite-toasts{
     position:fixed; top:14px; left:50%; transform:translateX(-50%);
@@ -3082,7 +3090,7 @@ function subscribeRoom(code){
 // писал всю комнату через set(), и любой ход игрока перезаписывал их своей
 // (возможно устаревшей) копией — только что занятое кем-то место стиралось.
 // Отсюда и расхождение счётчиков: у одного 1 из 5, у другого 2 из 5.
-const NON_GAME_KEYS = ['claims','reserved','chat','voice','rtc'];
+const NON_GAME_KEYS = ['claims','reserved','uids','chat','voice','rtc'];
 
 function pushState(s){
   if(!currentRoom) return Promise.resolve();
@@ -3680,6 +3688,7 @@ function clearMyClaims(code, s){
     claims.forEach((c,i)=>{
       if(c !== myDeviceId) return;
       updates['claims/'+i] = null;
+      updates['uids/'+i] = null;
       // Возвращаем освобождаемому месту исходное имя и снимаем аватар,
       // иначе на нём навсегда останется ник пересевшего игрока.
       const orig = (s && s.p && s.p[i] && s.p[i].n0) ? s.p[i].n0 : null;
@@ -3704,6 +3713,16 @@ function claimSeat(code, idx, deviceId, s){
   ).then(result=>{
     if(result.committed && result.snapshot.val()===deviceId){
       lastIdentitySync = ''; // разрешаем синку заново подставить ник и аватар
+      // Привязываем место к аккаунту и СНИМАЕМ бронь, выписанную на этот аккаунт.
+      // Без этого бронь висела на другом месте вечно: приглашённый уже сидит
+      // рядом, а его «личное» место никто занять не может — состав не собирается.
+      if(myUid && !isAnonUser){
+        const updates = {};
+        updates['uids/'+idx] = myUid;
+        const reserved = normalizeSlots(s && s.reserved, (s && s.p) ? s.p.length : MAX_PLAYERS);
+        reserved.forEach((r,j)=>{ if(r === myUid) updates['reserved/'+j] = null; });
+        return db.ref('rooms/'+code).update(updates).then(()=>'ok').catch(()=>'ok');
+      }
       return 'ok';
     }
     return 'taken';
@@ -3719,7 +3738,7 @@ function releaseSeat(code, idx, s){
   const restore = orig ? db.ref('rooms/'+code+'/p/'+idx).update({ n: orig, av: null })
                        : Promise.resolve();
   return restore
-    .then(()=>db.ref('rooms/'+code+'/claims/'+idx).set(null))
+    .then(()=>db.ref('rooms/'+code).update({ ['claims/'+idx]: null, ['uids/'+idx]: null }))
     .then(()=>clearMyClaims(code, s))
     .catch(err=>{ console.error('Не удалось освободить место:', err); });
 }
@@ -3853,6 +3872,18 @@ function buildClaimPanel(s, code){
     row.appendChild(el('span',{class:'claim-name', text:pl.n}));
     if(lockedForMe){
       row.appendChild(el('span',{class:'seat-reserved', text:'ждёт приглашённого'}));
+      // Страховка от тупика: если приглашённый не пришёл или сел на другое место,
+      // бронь можно снять вручную, иначе состав не собрать и игра не начнётся.
+      const freeBtn = el('button',{class:'ghost', style:'font-size:9.5px; padding:6px 9px;', text:'Снять бронь'});
+      freeBtn.title = 'Освободить это место для любого игрока';
+      freeBtn.onclick = ()=>{
+        freeBtn.setAttribute('disabled','disabled');
+        db.ref('rooms/'+code+'/reserved/'+i).set(null).catch(err=>{
+          seatErr.textContent = 'Не удалось снять бронь: '+err.message;
+          freeBtn.removeAttribute('disabled');
+        });
+      };
+      row.appendChild(freeBtn);
     }
     const btn = el('button',{class: (taken || lockedForMe) ? 'ghost' : 'primary',
       style:'font-size:11px; padding:8px 12px;',
@@ -3908,13 +3939,21 @@ function appendRosterPanel(app, s, myIdx){
       text:'Личные дела откроются, когда все займут свои места. Ждём:'}));
 
     const list = el('div',{class:'lobby-waiting'});
+    const reservedSlots = normalizeSlots(s.reserved, s.p.length);
     pending.forEach(x=>{
       const row = el('div',{class:'lobby-person'});
       row.appendChild(el('span',{class:'lobby-dot'}));
       row.appendChild(el('span',{text:x.pl.n}));
+      if(reservedSlots[x.i]){
+        row.appendChild(el('span',{class:'seat-reserved', text:'бронь приглашённого'}));
+      }
       list.appendChild(row);
     });
     waitPanel.appendChild(list);
+    if(reservedSlots.some((r,i)=>r && !normalizeSlots(s.claims, s.p.length)[i])){
+      waitPanel.appendChild(el('p',{class:'tiny', style:'margin-top:9px;',
+        text:'Забронированное место может занять только приглашённый. Если он не придёт или сядет на другое место, бронь можно снять в панели выбора личности.'}));
+    }
     app.appendChild(waitPanel);
     return;
   }
