@@ -1284,6 +1284,16 @@
   }
   @media (prefers-reduced-motion: reduce){ .lobby-dot{ animation:none; opacity:.7; } }
 
+  .claim-identity{
+    display:flex; flex-direction:column; gap:2px;
+    border-left:2px solid var(--card-own);
+    background:#191510;
+    padding:10px 12px;
+    margin:10px 0 14px;
+  }
+  .claim-identity .claim-id-av{ font-size:18px; }
+  .claim-identity input[type=text]{ margin-bottom:6px; }
+
   .seat-reserved{
     font-family:'Oswald',sans-serif;
     font-size:8.5px; letter-spacing:1.2px; text-transform:uppercase;
@@ -3634,6 +3644,21 @@ function myPlayerIdx(s){
 }
 
 // Возвращает Promise: 'ok' | 'taken'
+// Ник гостя (без аккаунта) храним локально: у него нет профиля, но подписывать
+// его место «Приглашённый» нельзя — иначе имя-заглушка остаётся в игре навсегда.
+function getGuestNick(){
+  try{ return localStorage.getItem('bunker_guest_nick') || ''; }catch(e){ return ''; }
+}
+function setGuestNick(nick){
+  try{ localStorage.setItem('bunker_guest_nick', nick); }catch(e){}
+}
+// Имя, под которым игрок должен сидеть за столом: из аккаунта или введённое гостем
+function effectiveNick(){
+  if(myProfile && !isAnonUser && myProfile.nick) return String(myProfile.nick).slice(0,16);
+  const g = getGuestNick();
+  return g ? String(g).slice(0,16) : '';
+}
+
 // Держит имя и аватар на занятом месте в соответствии с профилем.
 // Вызывается при каждой перерисовке, а не только в момент занятия места:
 // так ник восстановится и если запись в тот момент не прошла, и если чужой
@@ -3641,12 +3666,13 @@ function myPlayerIdx(s){
 // в профиле уже посреди партии.
 let lastIdentitySync = '';
 function syncSeatIdentity(code, s, myIdx){
-  if(myIdx < 0 || !myProfile || isAnonUser) return;
-  const nick = String(myProfile.nick || '').slice(0,16);
-  if(!nick) return;
+  if(myIdx < 0) return;
+  const nick = effectiveNick();   // из аккаунта или введённый гостем
+  if(!nick) return;               // гость ещё не назвался — ничего не пишем
   const me = s.p[myIdx];
   if(!me) return;
-  const avatarId = myProfile.avatar || null;
+  // Аватар есть только у зарегистрированных
+  const avatarId = (myProfile && !isAnonUser && myProfile.avatar) ? myProfile.avatar : null;
   const nameOk = me.n === nick;
   const avatarOk = (me.av || null) === avatarId;
   if(nameOk && avatarOk) return;
@@ -3660,7 +3686,7 @@ function syncSeatIdentity(code, s, myIdx){
   if(!nameOk) patch.n = nick;
   if(!avatarOk) patch.av = avatarId;
   db.ref('rooms/'+code+'/p/'+myIdx).update(patch).catch(err=>{
-    console.error('Не удалось синхронизировать имя с профилем:', err);
+    console.error('Не удалось синхронизировать имя:', err);
     lastIdentitySync = ''; // разрешаем повтор на следующей перерисовке
   });
 }
@@ -3728,13 +3754,14 @@ function claimSeat(code, idx, deviceId, s){
         reserved.forEach((r,j)=>{ if(r === myUid) updates['reserved/'+j] = null; });
         return db.ref('rooms/'+code).update(updates).then(()=>'ok').catch(()=>'ok');
       }
-      // Гость без аккаунта: на месте мог остаться ник прошлого владельца
-      // (например, вкладку в инкогнито просто закрыли). Возвращаем исходное имя,
-      // иначе гость играет под чужим ником.
+      // Гость без аккаунта: подписываем место его собственным ником, а не
+      // оставляем имя-заглушку («Приглашённый») и не наследуем чужой залипший ник.
+      const guest = effectiveNick();
       const orig = (s && s.p && s.p[idx]) ? (s.p[idx].n0 || null) : null;
-      if(orig){
+      const nameToSet = guest || orig;
+      if(nameToSet){
         return db.ref('rooms/'+code).update({
-          ['p/'+idx+'/n']: orig,
+          ['p/'+idx+'/n']: nameToSet,
           ['p/'+idx+'/av']: null,
           ['uids/'+idx]: null
         }).then(()=>'ok').catch(()=>'ok');
@@ -3876,8 +3903,49 @@ function buildClaimPanel(s, code){
   const claims = normalizeSlots(s.claims, s.p.length);
   const reserved = normalizeSlots(s.reserved, s.p.length);
   const claimPanel = el('div',{class:'panel fade-in-up', 'data-tag':'Определение личности'});
-  claimPanel.appendChild(el('p',{text:'Это устройство ещё не привязано ни к одному игроку в этой комнате. Выбери, кем из списка являешься именно ты — после этого место закрепится только за твоим браузером, и никто другой (включая тебя с другого устройства) не увидит твои скрытые характеристики.'}));
+  claimPanel.appendChild(el('p',{text:'Это устройство ещё не привязано ни к одному игроку в этой комнате. Выбери свободное место — оно закрепится только за твоим браузером, и никто другой (включая тебя с другого устройства) не увидит твои скрытые характеристики.'}));
   const seatErr = el('div',{class:'error-msg', text:''});
+
+  // ---- Под каким именем садимся ----
+  const registered = !!(myProfile && !isAnonUser && myProfile.nick);
+  let guestInput = null;
+
+  const idBox = el('div',{class:'claim-identity'});
+  if(registered){
+    const av = avatarById(myProfile.avatar);
+    idBox.appendChild(el('span',{class:'claim-id-av', style:'color:'+av.color, text:av.glyph}));
+    idBox.appendChild(el('span',{class:'tiny', html:'Садишься под именем из аккаунта: <b style="color:var(--card-own)">'+myProfile.nick+'</b>'}));
+  } else {
+    // Гость обязан назваться: иначе на месте останется имя-заглушка вроде «Приглашённый»
+    idBox.appendChild(el('label',{text:'Как тебя звать в этой игре'}));
+    guestInput = el('input',{type:'text', placeholder:'Твой ник', style:'margin-bottom:4px;'});
+    guestInput.setAttribute('maxlength','16');
+    guestInput.value = getGuestNick();
+    idBox.appendChild(guestInput);
+    idBox.appendChild(el('p',{class:'tiny', style:'margin:0;',
+      text:'Ник запомнится в этом браузере. Зарегистрированным игрокам имя подставляется из профиля автоматически.'}));
+  }
+  claimPanel.appendChild(idBox);
+
+  // Проверяем ник гостя перед тем, как дать занять место
+  function resolveNick(){
+    if(registered) return myProfile.nick.slice(0,16);
+    const v = guestInput ? guestInput.value.trim().slice(0,16) : '';
+    if(v.length < 2){
+      seatErr.textContent = 'Сначала впиши свой ник — минимум 2 символа.';
+      if(guestInput) guestInput.focus();
+      return null;
+    }
+    // не даём двум игрокам сидеть под одинаковыми именами
+    const clash = s.p.some((pl,j)=>claims[j] && String(pl.n||'').toLowerCase() === v.toLowerCase());
+    if(clash){
+      seatErr.textContent = 'Такой ник уже занят другим игроком в этой комнате — выбери другой.';
+      if(guestInput) guestInput.focus();
+      return null;
+    }
+    return v;
+  }
+
   let anyFree = false;
   s.p.forEach((pl,i)=>{
     const taken = !!claims[i];
@@ -3908,6 +3976,10 @@ function buildClaimPanel(s, code){
     if(taken || lockedForMe){ btn.setAttribute('disabled','disabled'); }
     else{
       btn.onclick = ()=>{
+        seatErr.textContent = '';
+        const nick = resolveNick();
+        if(!nick) return;                      // ник не подошёл — место не занимаем
+        if(!registered) setGuestNick(nick);    // запомним ник гостя на будущее
         btn.setAttribute('disabled','disabled');
         claimSeat(code, i, myDeviceId, s).then(result=>{
           if(result==='taken'){
@@ -5550,6 +5622,26 @@ function renderGame(s, code){
     resetBtn.onclick = ()=>{ if(confirm('Освободить это место? Придётся выбрать его заново.')) releaseSeat(code, myIdx, s); };
     idRow.appendChild(resetBtn);
     badgePanel.appendChild(idRow);
+    // Гость может переименоваться, не освобождая место
+    if(!(myProfile && !isAnonUser)){
+      const renameBtn = el('button',{class:'ghost', style:'font-size:10px; padding:6px 10px; margin-top:8px;', text:'Сменить ник'});
+      renameBtn.onclick = ()=>{
+        const cur = effectiveNick();
+        const next = prompt('Твой ник в этой игре:', cur);
+        if(next === null) return;
+        const clean = next.trim().slice(0,16);
+        if(clean.length < 2){ alert('Ник должен быть не короче 2 символов.'); return; }
+        const clash = s.p.some((pl,j)=>j !== myIdx && normalizeSlots(s.claims, s.p.length)[j]
+          && String(pl.n||'').toLowerCase() === clean.toLowerCase());
+        if(clash){ alert('Такой ник уже занят другим игроком в этой комнате.'); return; }
+        setGuestNick(clean);
+        lastIdentitySync = '';
+        db.ref('rooms/'+code+'/p/'+myIdx).update({ n: clean }).catch(err=>{
+          alert('Не удалось сменить ник: '+err.message);
+        });
+      };
+      badgePanel.appendChild(renameBtn);
+    }
   }
   col.appendChild(badgePanel);
 
