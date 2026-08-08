@@ -1284,6 +1284,31 @@
   }
   @media (prefers-reduced-motion: reduce){ .lobby-dot{ animation:none; opacity:.7; } }
 
+  /* ---------- всплывающее приглашение ---------- */
+  .invite-toasts{
+    position:fixed; top:14px; left:50%; transform:translateX(-50%);
+    z-index:70; display:flex; flex-direction:column; gap:8px;
+    width:360px; max-width:calc(100vw - 24px);
+  }
+  .invite-toast{
+    background:#1a1210;
+    border:1px solid var(--amber-dim);
+    border-left:3px solid var(--amber);
+    padding:12px 14px;
+    box-shadow:0 10px 30px rgba(0,0,0,.7);
+    animation:fadeInUp .3s ease both;
+  }
+  .invite-toast-head{ margin-bottom:6px; }
+  .invite-toast-tag{
+    font-family:'Oswald',sans-serif;
+    font-size:9.5px; letter-spacing:2px; text-transform:uppercase; color:var(--amber);
+  }
+  .invite-toast-body{ font-size:12.5px; line-height:1.55; color:var(--paper); }
+  .invite-toast-body b{ color:var(--amber); }
+  @media(max-width:700px){
+    .invite-toasts{ top:8px; width:auto; left:10px; right:10px; transform:none; }
+  }
+
   .loading-line{
     font-family:'Oswald',sans-serif;
     letter-spacing:1.5px; font-size:15px; color:var(--paper);
@@ -2550,7 +2575,11 @@ function makeGame(names){
     v[7] = generateAgeValue();
     v[8] = pick(ORIENTATIONS);
     const ab = shuffle(abilityIds).slice(0,2);
-    return { n, v, r:0, e:false, ab, au:0, abUsed:[], shield:false };
+    // n0 — исходное имя места, заданное при создании комнаты. Нужно, чтобы при
+    // освобождении места вернуть его прежнее название: иначе подстановка ника из
+    // профиля остаётся навсегда, и после нескольких пересадок все свободные места
+    // оказываются названы одним и тем же ником.
+    return { n, n0:n, v, r:0, e:false, ab, au:0, abUsed:[], shield:false };
   });
   const cata = pick(CATASTROPHES);
   const seats = finalSeats(names.length);
@@ -3048,8 +3077,24 @@ function subscribeRoom(code){
   currentOffFn = ()=> ref.off('value', handler);
 }
 
+// Поля, которыми владеет НЕ игровое состояние, а отдельные подсистемы:
+// места (claims/reserved), чат, голос и сигналинг WebRTC. Раньше pushState
+// писал всю комнату через set(), и любой ход игрока перезаписывал их своей
+// (возможно устаревшей) копией — только что занятое кем-то место стиралось.
+// Отсюда и расхождение счётчиков: у одного 1 из 5, у другого 2 из 5.
+const NON_GAME_KEYS = ['claims','reserved','chat','voice','rtc'];
+
 function pushState(s){
-  db.ref('rooms/'+currentRoom).set(s);
+  if(!currentRoom) return Promise.resolve();
+  const patch = {};
+  Object.keys(s).forEach(k=>{
+    if(NON_GAME_KEYS.indexOf(k) !== -1) return;
+    patch[k] = s[k];
+  });
+  // update() сливает только игровые поля и не трогает всё остальное
+  return db.ref('rooms/'+currentRoom).update(patch).catch(err=>{
+    console.error('Не удалось записать состояние:', err);
+  });
 }
 
 /* ---------------- Профиль игрока ----------------
@@ -3471,6 +3516,53 @@ function inviteFriendToRoom(friendUid, code){
   });
 }
 
+// Всплывающее приглашение поверх любого экрана. Раньше приглашение было видно
+// только на главной странице: если друг в этот момент сидел в лобби, в профиле
+// или в другой комнате, он просто ничего не замечал.
+function renderInviteToasts(){
+  let host = document.getElementById('inviteToasts');
+  const pending = myInvites.filter(inv=>inv.code !== currentRoom);
+
+  if(pending.length === 0){
+    if(host && host.parentNode) host.parentNode.removeChild(host);
+    return;
+  }
+  if(!host){
+    host = el('div',{class:'invite-toasts', id:'inviteToasts'});
+    document.body.appendChild(host);
+  }
+  host.innerHTML = '';
+
+  pending.slice(0,3).forEach(inv=>{
+    const card = el('div',{class:'invite-toast'});
+    const head = el('div',{class:'invite-toast-head'});
+    head.appendChild(el('span',{class:'invite-toast-tag', text:'Приглашение в игру'}));
+    card.appendChild(head);
+    card.appendChild(el('div',{class:'invite-toast-body',
+      html:'<b>'+(inv.from||'Игрок')+'</b> зовёт тебя в комнату <b>'+inv.code+'</b>'}));
+
+    const row = el('div',{class:'row', style:'gap:7px; margin-top:10px;'});
+    const yes = el('button',{class:'primary', style:'font-size:11px; padding:9px 14px;', text:'Согласиться'});
+    yes.onclick = ()=>{
+      document.body.classList.remove('hide-chrome');
+      history.replaceState(null,'', location.pathname + '?room=' + inv.code);
+      subscribeRoom(inv.code);
+      // Само приглашение снимется, когда игрок займёт место в комнате
+      renderInviteToasts();
+    };
+    const no = el('button',{class:'ghost', style:'font-size:11px; padding:9px 14px;', text:'Отказаться'});
+    no.onclick = ()=>{
+      myInvites = myInvites.filter(x=>x.code !== inv.code);
+      renderInviteToasts();
+      dismissInvite(inv.code).catch(()=>{});
+    };
+    row.appendChild(yes);
+    row.appendChild(no);
+    card.appendChild(row);
+    host.appendChild(card);
+  });
+}
+
 let myInvites = [];
 let invitesOffFn = null;
 function subscribeInvites(onChange){
@@ -3482,6 +3574,7 @@ function subscribeInvites(onChange){
     const val = snap.val() || {};
     myInvites = Object.keys(val).map(code=>Object.assign({code}, val[code]))
       .sort((a,b)=>(b.ts||0)-(a.ts||0));
+    renderInviteToasts(); // видно на любом экране, не только на главной
     if(onChange) onChange();
   };
   ref.on('value', handler);
@@ -3584,7 +3677,17 @@ function clearMyClaims(code, s){
   return claimsPromise.then(claims=>{
     if(!claims) return;
     const updates = {};
-    claims.forEach((c,i)=>{ if(c === myDeviceId) updates['claims/'+i] = null; });
+    claims.forEach((c,i)=>{
+      if(c !== myDeviceId) return;
+      updates['claims/'+i] = null;
+      // Возвращаем освобождаемому месту исходное имя и снимаем аватар,
+      // иначе на нём навсегда останется ник пересевшего игрока.
+      const orig = (s && s.p && s.p[i] && s.p[i].n0) ? s.p[i].n0 : null;
+      if(orig){
+        updates['p/'+i+'/n'] = orig;
+        updates['p/'+i+'/av'] = null;
+      }
+    });
     if(Object.keys(updates).length === 0) return;
     return db.ref('rooms/'+code).update(updates);
   });
@@ -3610,9 +3713,13 @@ function claimSeat(code, idx, deviceId, s){
 function releaseSeat(code, idx, s){
   lastIdentitySync = '';
   rememberRoom(code, false);
-  // Чистим и конкретный слот, и любые залипшие привязки этого устройства.
-  // clearMyClaims сам достанет список из базы, если состояние не передали.
-  return db.ref('rooms/'+code+'/claims/'+idx).set(null)
+  // Возвращаем месту исходное название и снимаем аватар: подставленный ник
+  // не должен оставаться на месте, которое снова стало свободным.
+  const orig = (s && s.p && s.p[idx] && s.p[idx].n0) ? s.p[idx].n0 : null;
+  const restore = orig ? db.ref('rooms/'+code+'/p/'+idx).update({ n: orig, av: null })
+                       : Promise.resolve();
+  return restore
+    .then(()=>db.ref('rooms/'+code+'/claims/'+idx).set(null))
     .then(()=>clearMyClaims(code, s))
     .catch(err=>{ console.error('Не удалось освободить место:', err); });
 }
@@ -4512,7 +4619,7 @@ function renderLanding(){
       const card = el('div',{class:'invite-card'});
       card.appendChild(el('span',{class:'inv-text',
         html:'<b>'+(inv.from||'Игрок')+'</b> зовёт в комнату <b>'+inv.code+'</b>'}));
-      const go = el('button',{class:'primary', text:'Войти'});
+      const go = el('button',{class:'primary', text:'Согласиться'});
       go.onclick = ()=>{
         // Приглашение НЕ удаляем здесь: его удаление дёргает подписку на
         // приглашения, та перерисовывала главную поверх уже начатого входа —
@@ -4523,8 +4630,12 @@ function renderLanding(){
         subscribeRoom(inv.code);
       };
       card.appendChild(go);
-      const no = el('button',{class:'ghost', text:'Скрыть'});
-      no.onclick = ()=>{ dismissInvite(inv.code).then(()=>renderLanding()); };
+      const no = el('button',{class:'ghost', text:'Отказаться'});
+      no.onclick = ()=>{
+        myInvites = myInvites.filter(x=>x.code !== inv.code);
+        renderLanding();
+        dismissInvite(inv.code).catch(()=>{});
+      };
       card.appendChild(no);
       invWrap.appendChild(card);
     });
@@ -5331,6 +5442,7 @@ function renderGame(s, code){
   initBrandHome();
   rememberRoom(code, myIdx >= 0); // помним комнату, только если место реально занято
   mountCommDock(s, myIdx);
+  renderInviteToasts(); // приглашение в ДРУГУЮ комнату остаётся видимым и в игре
   if(s.ph === 'end') recordGameStats(s, myIdx);
 
   const badgePanel = el('div',{class:'panel', 'data-tag':'Комната'});
