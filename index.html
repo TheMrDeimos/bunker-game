@@ -4787,6 +4787,8 @@ function renderLobby(){
 
     const grid = el('div',{class:'grid6'});
     const inputs = [];
+    const wraps = [];
+    const badges = [];
     const invitedUids = []; // кого позвать из друзей после создания комнаты
     const seatInvites = {}; // индекс поля ввода -> uid друга (бронь места)
     for(let i=0;i<MAX_PLAYERS;i++){
@@ -4796,6 +4798,10 @@ function renderLobby(){
       inp.setAttribute('maxlength','16');
       inputs.push(inp);
       wrap.appendChild(inp);
+      const badge = el('div',{class:'tiny', style:'margin:-8px 0 10px; color:var(--neon); display:none;'});
+      wrap.appendChild(badge);
+      badges.push(badge);
+      wraps.push(wrap);
       grid.appendChild(wrap);
     }
 
@@ -4815,10 +4821,15 @@ function renderLobby(){
           chip.onclick = ()=>{
             const free = inputs.find(inp=>!inp.value.trim());
             if(!free){ return; }
-            free.value = f.nick.slice(0,16);
-            // Запоминаем, в какое именно поле сел друг: это место будет
-            // забронировано за ним, и занять его смогут только он сам.
-            seatInvites[inputs.indexOf(free)] = f.uid;
+            const idx = inputs.indexOf(free);
+            // В имя места ник друга НЕ пишем: это имя станет исходным названием
+            // слота и останется на нём навсегда. Если друг потом сядет на другое
+            // место, его ник дублировался бы сразу в двух слотах. Поэтому место
+            // получает нейтральное название, а ник подставится сам, когда друг сядет.
+            free.value = 'Приглашённый';
+            badges[idx].style.display = 'block';
+            badges[idx].textContent = '◈ забронировано для ' + f.nick;
+            seatInvites[idx] = f.uid;
             if(invitedUids.indexOf(f.uid) === -1) invitedUids.push(f.uid);
             chip.disabled = true;
             chip.classList.add('primary');
@@ -4827,7 +4838,7 @@ function renderLobby(){
         });
         fPanel.appendChild(chips);
         fPanel.appendChild(el('p',{class:'tiny', style:'margin-top:6px;',
-          text:'Друг получит приглашение с кодом комнаты — оно появится у него на главной странице.'}));
+          text:'Друг получит приглашение с кодом комнаты — оно появится у него на экране. Место останется без имени и подпишется его ником, только когда он реально его займёт.'}));
       }
       body.appendChild(fPanel);
     }
@@ -4840,15 +4851,23 @@ function renderLobby(){
       // брони пересчитываем по тем же уцелевшим полям, а не по исходным номерам.
       const kept = [];
       inputs.forEach((inp, i)=>{ if(inp.value.trim()) kept.push(i); });
-      const names = kept.map(i=>inputs[i].value.trim());
-      if(names.length < MIN_PLAYERS){
+      const rawNames = kept.map(i=>inputs[i].value.trim());
+      if(rawNames.length < MIN_PLAYERS){
         err.textContent = 'Впиши хотя бы '+MIN_PLAYERS+' имени — иначе бункер сразу окажется полным, и играть будет не в кого.';
         return;
       }
-      if(names.length > MAX_PLAYERS){
+      if(rawNames.length > MAX_PLAYERS){
         err.textContent = 'Максимум '+MAX_PLAYERS+' игроков за одну игру.';
         return;
       }
+      // Одинаковые имена мест путают всех: непонятно, кто где сидит и за кого
+      // голосовать. Повторы автоматически нумеруем — «Приглашённый», «Приглашённый 2».
+      const seen = {};
+      const names = rawNames.map(n=>{
+        const key = n.toLowerCase();
+        seen[key] = (seen[key] || 0) + 1;
+        return seen[key] === 1 ? n : (n + ' ' + seen[key]).slice(0,16);
+      });
       const s = makeGame(names);
       s.reserved = kept.map(i=>seatInvites[i] || null);
       const code = genRoomCode();
