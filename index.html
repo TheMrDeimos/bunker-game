@@ -3012,6 +3012,11 @@ function subscribeRoom(code){
     // получался бесконечный цикл записей. Теперь просто нормализуем локально.
     s.claims = normalizeSlots(s.claims, s.p.length);
     s.reserved = normalizeSlots(s.reserved, s.p.length);
+    s.uids = normalizeSlots(s.uids, s.p.length);
+    // Комнаты, созданные до появления n0, не знают исходных имён мест.
+    // Для свободных мест восстановить прежнее имя уже нельзя, но зафиксируем
+    // текущее как исходное — чтобы дальше подстановка ников была обратимой.
+    s.p.forEach(pl=>{ if(typeof pl.n0 !== 'string' || !pl.n0) pl.n0 = pl.n; });
     // старые комнаты могли быть созданы до появления особых способностей — раздадим их постфактум
     const needsAbilityFix = !s.schemaVersion || s.schemaVersion < CURRENT_SCHEMA_VERSION;
     if(needsAbilityFix){
@@ -3723,7 +3728,18 @@ function claimSeat(code, idx, deviceId, s){
         reserved.forEach((r,j)=>{ if(r === myUid) updates['reserved/'+j] = null; });
         return db.ref('rooms/'+code).update(updates).then(()=>'ok').catch(()=>'ok');
       }
-      return 'ok';
+      // Гость без аккаунта: на месте мог остаться ник прошлого владельца
+      // (например, вкладку в инкогнито просто закрыли). Возвращаем исходное имя,
+      // иначе гость играет под чужим ником.
+      const orig = (s && s.p && s.p[idx]) ? (s.p[idx].n0 || null) : null;
+      if(orig){
+        return db.ref('rooms/'+code).update({
+          ['p/'+idx+'/n']: orig,
+          ['p/'+idx+'/av']: null,
+          ['uids/'+idx]: null
+        }).then(()=>'ok').catch(()=>'ok');
+      }
+      return db.ref('rooms/'+code+'/uids/'+idx).set(null).then(()=>'ok').catch(()=>'ok');
     }
     return 'taken';
   });
@@ -3796,11 +3812,12 @@ function renderRoster(s, opts={}){
     });
     const nameRow = el('div',{class:'pname'});
     const nameCell = el('span',{class:'pname-main'});
-    if(pl.av){
-      const pav = avatarById(pl.av);
+    const avId = seatAvatar(s, i);
+    if(avId){
+      const pav = avatarById(avId);
       nameCell.appendChild(el('span',{class:'pname-av', style:'color:'+pav.color, text:pav.glyph}));
     }
-    nameCell.appendChild(el('span',{text:pl.n}));
+    nameCell.appendChild(el('span',{text:seatLabel(s, i)}));
     nameRow.appendChild(nameCell);
     if(pl.shield && (isOwn || s.ph!=='vote')) nameRow.appendChild(el('span',{class:'vote-count', style:'color:var(--neon)', text:'🛡 ЩИТ'}));
     if(s.ph==='vote' && !pl.e){
@@ -3869,7 +3886,7 @@ function buildClaimPanel(s, code){
     const lockedForMe = !taken && reservedFor && reservedFor !== myUid;
     if(!taken && !lockedForMe) anyFree = true;
     const row = el('div',{class:'claim-row'});
-    row.appendChild(el('span',{class:'claim-name', text:pl.n}));
+    row.appendChild(el('span',{class:'claim-name', text:seatLabel(s, i)}));
     if(lockedForMe){
       row.appendChild(el('span',{class:'seat-reserved', text:'ждёт приглашённого'}));
       // Страховка от тупика: если приглашённый не пришёл или сел на другое место,
@@ -3913,6 +3930,27 @@ function buildClaimPanel(s, code){
   return claimPanel;
 }
 
+// Как подписывать место в интерфейсе.
+// Ключевое правило: если место НИКЕМ не занято, показываем исходное имя, а не
+// подставленный ник. Иначе ник остаётся висеть на освободившемся месте (браузер
+// закрыли, вкладку в инкогнито убили — код освобождения просто не успел
+// выполниться), и следующий занявший это место выглядит как чужой аккаунт.
+function seatLabel(s, i){
+  const pl = s.p[i];
+  if(!pl) return '—';
+  const claims = normalizeSlots(s.claims, s.p.length);
+  if(claims[i]) return pl.n;              // место занято — показываем текущий ник
+  return pl.n0 || pl.n;                   // место свободно — только исходное имя
+}
+
+// Аватар показываем только у того, кто реально сидит на месте
+function seatAvatar(s, i){
+  const pl = s.p[i];
+  if(!pl || !pl.av) return null;
+  const claims = normalizeSlots(s.claims, s.p.length);
+  return claims[i] ? pl.av : null;
+}
+
 // Сколько мест ещё не закреплено за устройствами
 function unclaimedSeats(s){
   const claims = normalizeSlots(s.claims, s.p.length);
@@ -3943,7 +3981,7 @@ function appendRosterPanel(app, s, myIdx){
     pending.forEach(x=>{
       const row = el('div',{class:'lobby-person'});
       row.appendChild(el('span',{class:'lobby-dot'}));
-      row.appendChild(el('span',{text:x.pl.n}));
+      row.appendChild(el('span',{text:seatLabel(s, x.i)}));
       if(reservedSlots[x.i]){
         row.appendChild(el('span',{class:'seat-reserved', text:'бронь приглашённого'}));
       }
