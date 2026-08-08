@@ -444,17 +444,21 @@
   body::-webkit-scrollbar-thumb:hover, html::-webkit-scrollbar-thumb:hover{background:#57534a;}
 
   /* Внутренние области прокрутки: направляющая-пунктир и ромб-бегунок */
-  .rail, .feed-list, .rules-body, .linkbox{
+  .rail, .feed-list, .rules-body, .linkbox, .patch-scroll, .chat-log{
     scrollbar-width:thin;
     scrollbar-color:var(--amber) transparent;
   }
   .rail::-webkit-scrollbar,
   .feed-list::-webkit-scrollbar,
   .rules-body::-webkit-scrollbar,
+  .patch-scroll::-webkit-scrollbar,
+  .chat-log::-webkit-scrollbar,
   .linkbox::-webkit-scrollbar{width:14px; height:14px; background:transparent;}
   .rail::-webkit-scrollbar-track,
   .feed-list::-webkit-scrollbar-track,
   .rules-body::-webkit-scrollbar-track,
+  .patch-scroll::-webkit-scrollbar-track,
+  .chat-log::-webkit-scrollbar-track,
   .linkbox::-webkit-scrollbar-track{
     background:
       repeating-linear-gradient(180deg, var(--amber-dim) 0 9px, transparent 9px 18px)
@@ -463,6 +467,8 @@
   .rail::-webkit-scrollbar-thumb,
   .feed-list::-webkit-scrollbar-thumb,
   .rules-body::-webkit-scrollbar-thumb,
+  .patch-scroll::-webkit-scrollbar-thumb,
+  .chat-log::-webkit-scrollbar-thumb,
   .linkbox::-webkit-scrollbar-thumb{
     background:
       url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 14'%3E%3Cpath d='M7 0.6L13.4 7L7 13.4L0.6 7Z' fill='%23c8342a'/%3E%3C/svg%3E")
@@ -475,6 +481,8 @@
   .rail::-webkit-scrollbar-thumb:hover,
   .feed-list::-webkit-scrollbar-thumb:hover,
   .rules-body::-webkit-scrollbar-thumb:hover,
+  .patch-scroll::-webkit-scrollbar-thumb:hover,
+  .chat-log::-webkit-scrollbar-thumb:hover,
   .linkbox::-webkit-scrollbar-thumb:hover{
     background:
       url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 14'%3E%3Cpath d='M7 0.2L13.8 7L7 13.8L0.2 7Z' fill='%23e0553f'/%3E%3C/svg%3E")
@@ -1104,7 +1112,12 @@
     font-size:10px; color:var(--muted-2); white-space:nowrap;
   }
   .patch-scroll{
-    max-height:340px; overflow-y:auto; padding-right:8px;
+    max-height:340px;
+    /* scroll вместо auto: направляющая с ромбом видна всегда, как в инструктаже,
+       а не появляется рывком только при переполнении. Ширина фирменной полосы
+       14px, поэтому нужен соответствующий отступ, иначе текст в неё упирается. */
+    overflow-y:scroll;
+    padding-right:14px;
   }
   .patch-entry{
     border-left:2px solid var(--line);
@@ -1240,6 +1253,42 @@
     font-family:'Oswald',sans-serif; font-size:8.5px; letter-spacing:1px;
     color:var(--muted-2); margin-left:auto; white-space:nowrap;
   }
+  /* ---------- ожидание сбора группы ---------- */
+  .lobby-progress{ display:flex; align-items:center; gap:10px; }
+  .lobby-count{
+    font-family:'Russo One','Oswald',sans-serif;
+    font-size:18px; color:var(--amber); white-space:nowrap; letter-spacing:1px;
+  }
+  .lobby-bar{
+    flex:1; height:3px; background:var(--line-soft); position:relative; overflow:hidden;
+  }
+  .lobby-bar i{
+    display:block; height:100%; background:var(--amber);
+    box-shadow:0 0 6px rgba(200,52,42,.7);
+    transition:width .4s ease;
+  }
+  .lobby-waiting{ display:flex; flex-direction:column; gap:5px; }
+  .lobby-person{
+    display:flex; align-items:center; gap:8px;
+    font-family:'Oswald',sans-serif;
+    font-size:13px; letter-spacing:1px; text-transform:uppercase; color:var(--muted);
+  }
+  .lobby-dot{
+    width:6px; height:6px; border-radius:50%; flex:0 0 6px;
+    background:var(--muted-2);
+    animation:lobbyPulse 1.6s ease-in-out infinite;
+  }
+  @keyframes lobbyPulse{
+    0%,100%{ opacity:.25; }
+    50%{ opacity:1; }
+  }
+  @media (prefers-reduced-motion: reduce){ .lobby-dot{ animation:none; opacity:.7; } }
+
+  .loading-line{
+    font-family:'Oswald',sans-serif;
+    letter-spacing:1.5px; font-size:15px; color:var(--paper);
+  }
+  .loading-line b{ color:var(--amber); }
   .comm-btn{
     font-size:9.5px; padding:6px 9px; letter-spacing:1px;
   }
@@ -2767,6 +2816,8 @@ let authReady = false;
 if(configOk){
   firebase.initializeApp(firebaseConfig);
   db = firebase.database();
+  // Сессия должна переживать перезагрузку вкладки
+  firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(()=>{});
   firebase.auth().onAuthStateChanged(user=>{
     if(user){
       authReady = true;
@@ -2775,28 +2826,39 @@ if(configOk){
       loadMyProfile().then(()=>{
         subscribeFriends();
         subscribeInvites(()=>{
-          // Приглашения показываются на главной — перерисуем её, если игрок там
-          if(document.querySelector('.landing')) renderLanding();
+          // Приглашения показываются на главной. Перерисовываем её только если
+          // игрок действительно там: иначе обновление списка приглашений
+          // выбрасывало его из уже открытой комнаты обратно на главную.
+          if(!currentRoom && document.querySelector('.landing')) renderLanding();
         });
         boot();
       });
     } else {
-      // Вышли из аккаунта — возвращаемся к анонимному режиму, чтобы игра
-      // продолжала работать по правилам безопасности Firebase.
+      // Пользователя нет вообще (первый заход или выход из аккаунта) — только
+      // тогда входим анонимно. Раньше анонимный вход вызывался безусловно при
+      // каждой загрузке страницы и перебивал уже восстановленную сессию
+      // аккаунта — именно из-за этого выкидывало при обновлении вкладки.
       myUid = null; myProfile = null; isAnonUser = true;
       if(friendsOffFn) friendsOffFn();
       if(invitesOffFn) invitesOffFn();
       myFriends = []; myInvites = [];
-      firebase.auth().signInAnonymously().catch(err=>{
-        console.error('Anonymous auth failed:', err);
-        renderAuthError(err);
-      });
+
+      // Если раньше в этом браузере был настоящий аккаунт, событие null может
+      // оказаться временным (обновление токена, медленное восстановление сессии).
+      // Даём Firebase шанс восстановиться, прежде чем создавать анонимный вход:
+      // анонимная сессия перетирает аккаунт безвозвратно.
+      let expectedAccount = false;
+      try{ expectedAccount = localStorage.getItem('bunker_had_account') === '1'; }catch(e){}
+      const delay = expectedAccount ? 2500 : 0;
+      setTimeout(()=>{
+        if(firebase.auth().currentUser) return; // сессия восстановилась сама
+        firebase.auth().signInAnonymously().catch(err=>{
+          console.error('Anonymous auth failed:', err);
+          authReady = false;
+          renderAuthError(err);
+        });
+      }, delay);
     }
-  });
-  firebase.auth().signInAnonymously().catch(err=>{
-    console.error('Anonymous auth failed:', err);
-    authReady = false;
-    renderAuthError(err);
   });
 }
 
@@ -2813,6 +2875,7 @@ function registerAccount(email, password, nick, avatarId){
     const u = result.user || firebase.auth().currentUser;
     myUid = u.uid;
     isAnonUser = false;
+    try{ localStorage.setItem('bunker_had_account','1'); }catch(e){}
     myProfile = { nick: nick, avatar: avatarId, stats: blankStats() };
     return saveMyProfile().then(()=>claimNickIndex(nick, myUid));
   });
@@ -2822,11 +2885,13 @@ function loginAccount(email, password){
   return firebase.auth().signInWithEmailAndPassword(email, password).then(result=>{
     myUid = result.user.uid;
     isAnonUser = false;
+    try{ localStorage.setItem('bunker_had_account','1'); }catch(e){}
     return loadMyProfile();
   });
 }
 
 function logoutAccount(){
+  try{ localStorage.removeItem('bunker_had_account'); }catch(e){}
   return firebase.auth().signOut();
 }
 
@@ -2859,21 +2924,57 @@ function roomLink(code){
   return location.origin + location.pathname + '?room=' + code;
 }
 
+// Приводит «слотовое» поле (claims / reserved) к массиву нужной длины.
+// Firebase хранит массивы без null-элементов, поэтому обратно может прийти
+// укороченный массив, объект с числовыми ключами или вообще ничего.
+function normalizeSlots(raw, len){
+  const out = new Array(len).fill(null);
+  if(!raw) return out;
+  if(Array.isArray(raw)){
+    raw.forEach((v,i)=>{ if(i < len) out[i] = (v === undefined ? null : v) || null; });
+  } else if(typeof raw === 'object'){
+    Object.keys(raw).forEach(k=>{
+      const i = parseInt(k, 10);
+      if(!isNaN(i) && i >= 0 && i < len) out[i] = raw[k] || null;
+    });
+  }
+  return out;
+}
+
+function renderRoomLoading(code){
+  document.body.classList.remove('hide-chrome');
+  const statusEl = document.getElementById('statusLine');
+  if(statusEl) statusEl.textContent = 'подключение к комнате ' + code + '…';
+  const app = document.getElementById('app');
+  if(!app) return;
+  app.innerHTML = '';
+  const panel = el('div',{class:'panel fade-in-up', 'data-tag':'Подключение'});
+  panel.appendChild(el('div',{class:'loading-line', html:'Комната <b>'+code+'</b> · устанавливаем связь<span class="cursor">▮</span>'}));
+  panel.appendChild(el('p',{class:'tiny', style:'margin-top:8px;',
+    text:'Если экран не сменится за несколько секунд — проверь соединение и обнови вкладку: ссылка на комнату уже сохранена в адресной строке.'}));
+  app.appendChild(panel);
+}
+
 function subscribeRoom(code){
   if(currentOffFn) currentOffFn();
   currentRoom = code;
+  // Показываем экран подключения СРАЗУ: первый снимок из базы может идти
+  // несколько секунд, и раньше всё это время экран оставался пустым —
+  // выглядело как зависание входа по приглашению.
+  renderRoomLoading(code);
   subscribeChat(code);
   const ref = db.ref('rooms/'+code);
   const handler = (snap)=>{
     const s = snap.val();
     if(!s){ renderRoomMissing(code); return; }
-    // старые комнаты, созданные до появления системы "мест", могли не иметь claims — добьём поле один раз
-    if(!Array.isArray(s.claims) || s.claims.length !== s.p.length){
-      const fixed = new Array(s.p.length).fill(null);
-      (s.claims||[]).forEach((v,i)=>{ if(i<fixed.length) fixed[i] = v || null; });
-      db.ref('rooms/'+code+'/claims').set(fixed);
-      s.claims = fixed;
-    }
+    // Firebase вырезает null из массивов, поэтому claims приходит то укороченным
+    // массивом, то объектом вида {2:"dev"} при разреженных индексах. Раньше здесь
+    // вызывался .forEach прямо на этом значении — на объекте он падает с TypeError
+    // и обрывает всю отрисовку (отсюда зависания и «ничего не происходит»).
+    // Плюс результат тут же писался обратно, снова терял null'ы и не совпадал —
+    // получался бесконечный цикл записей. Теперь просто нормализуем локально.
+    s.claims = normalizeSlots(s.claims, s.p.length);
+    s.reserved = normalizeSlots(s.reserved, s.p.length);
     // старые комнаты могли быть созданы до появления особых способностей — раздадим их постфактум
     const needsAbilityFix = !s.schemaVersion || s.schemaVersion < CURRENT_SCHEMA_VERSION;
     if(needsAbilityFix){
@@ -2964,8 +3065,9 @@ function blankStats(){
            refugeWins:0, animalsTamed:0, abilitiesUsed:0 };
 }
 
-function loadMyProfile(){
+function loadMyProfile(attempt){
   if(!myUid || isAnonUser){ myProfile = null; return Promise.resolve(null); }
+  const tries = attempt || 0;
   return db.ref('profiles/'+myUid).once('value').then(snap=>{
     const val = snap.val();
     if(val){
@@ -2975,10 +3077,20 @@ function loadMyProfile(){
         stats: Object.assign(blankStats(), val.stats || {})
       };
     } else {
-      myProfile = null;
+      myProfile = null; // аккаунт есть, но профиль ещё не заведён
     }
     return myProfile;
-  }).catch(()=>{ myProfile = null; return null; });
+  }).catch(err=>{
+    // Сетевая заминка или таймаут — НЕ повод считать, что игрок разлогинился.
+    // Раньше здесь профиль обнулялся, интерфейс переключался на «Войти»,
+    // и это выглядело как случайный выход из аккаунта при обновлении вкладки.
+    console.warn('Не удалось прочитать профиль (попытка '+(tries+1)+'):', err);
+    if(tries < 3){
+      return new Promise(res=>setTimeout(res, 600 * (tries+1)))
+        .then(()=>loadMyProfile(tries+1));
+    }
+    return myProfile; // оставляем то, что уже было загружено
+  });
 }
 
 function saveMyProfile(){
@@ -3447,18 +3559,62 @@ function syncSeatIdentity(code, s, myIdx){
   });
 }
 
-function claimSeat(code, idx, deviceId){
-  return db.ref('rooms/'+code+'/claims/'+idx).transaction(current=>{
-    if(current===null || current===undefined) return deviceId;
-    return; // не трогаем — место уже занято (abort)
-  }).then(result=>{
-    if(result.committed && result.snapshot.val()===deviceId) return 'ok';
+// Снимает ВСЕ слоты, привязанные к этому устройству. Ключевая деталь:
+// раньше освобождалось только одно место по переданному индексу. Если старая
+// привязка где-то оставалась (сорвалась запись, сменился индекс, дубль после
+// перезахода), myPlayerIdx находил её ПЕРВОЙ — из-за этого казалось, что
+// доступно только «следующее по порядку» место, а повторное «Это не я»
+// вообще ничего не делало.
+// Снимает ВСЕ прежние привязки этого устройства в комнате.
+// Раньше функция полагалась на переданное состояние, а оба вызывающих места
+// его не передавали — очистка молча не срабатывала. В результате при каждом
+// новом выборе места старая привязка оставалась, устройство «занимало» сразу
+// несколько мест, myPlayerIdx возвращал самое первое из них, и игрока
+// отбрасывало на старое место. Отсюда же и «свободно только следующее место»,
+// и «"Это не я" второй раз ничего не делает». Теперь при отсутствии состояния
+// список привязок читается прямо из базы.
+function clearMyClaims(code, s){
+  const fromState = (s && s.p) ? normalizeSlots(s.claims, s.p.length) : null;
+  const claimsPromise = fromState
+    ? Promise.resolve(fromState)
+    : db.ref('rooms/'+code+'/claims').once('value')
+        .then(snap=>normalizeSlots(snap.val(), MAX_PLAYERS))
+        .catch(()=>null);
+
+  return claimsPromise.then(claims=>{
+    if(!claims) return;
+    const updates = {};
+    claims.forEach((c,i)=>{ if(c === myDeviceId) updates['claims/'+i] = null; });
+    if(Object.keys(updates).length === 0) return;
+    return db.ref('rooms/'+code).update(updates);
+  });
+}
+
+function claimSeat(code, idx, deviceId, s){
+  // Сначала снимаем прежние привязки этого устройства, иначе в комнате
+  // окажется два «моих» места и игра будет считать активным первое из них.
+  return clearMyClaims(code, s).then(()=>
+    db.ref('rooms/'+code+'/claims/'+idx).transaction(current=>{
+      if(current===null || current===undefined) return deviceId;
+      return; // не трогаем — место уже занято (abort)
+    })
+  ).then(result=>{
+    if(result.committed && result.snapshot.val()===deviceId){
+      lastIdentitySync = ''; // разрешаем синку заново подставить ник и аватар
+      return 'ok';
+    }
     return 'taken';
   });
 }
 
-function releaseSeat(code, idx){
-  db.ref('rooms/'+code+'/claims/'+idx).set(null);
+function releaseSeat(code, idx, s){
+  lastIdentitySync = '';
+  rememberRoom(code, false);
+  // Чистим и конкретный слот, и любые залипшие привязки этого устройства.
+  // clearMyClaims сам достанет список из базы, если состояние не передали.
+  return db.ref('rooms/'+code+'/claims/'+idx).set(null)
+    .then(()=>clearMyClaims(code, s))
+    .catch(err=>{ console.error('Не удалось освободить место:', err); });
 }
 
 /* ---------------- DOM helpers ---------------- */
@@ -3571,7 +3727,91 @@ function ownDossierStrip(s, myIdx){
   return wrap;
 }
 
+// Панель выбора личности. Вынесена отдельно, потому что нужна в двух местах:
+// на экране ожидания состава и в обычном ходе игры.
+function buildClaimPanel(s, code){
+  const claims = normalizeSlots(s.claims, s.p.length);
+  const reserved = normalizeSlots(s.reserved, s.p.length);
+  const claimPanel = el('div',{class:'panel fade-in-up', 'data-tag':'Определение личности'});
+  claimPanel.appendChild(el('p',{text:'Это устройство ещё не привязано ни к одному игроку в этой комнате. Выбери, кем из списка являешься именно ты — после этого место закрепится только за твоим браузером, и никто другой (включая тебя с другого устройства) не увидит твои скрытые характеристики.'}));
+  const seatErr = el('div',{class:'error-msg', text:''});
+  let anyFree = false;
+  s.p.forEach((pl,i)=>{
+    const taken = !!claims[i];
+    const reservedFor = reserved[i] || null;
+    // Место, забронированное за приглашённым другом, занять может только он сам
+    const lockedForMe = !taken && reservedFor && reservedFor !== myUid;
+    if(!taken && !lockedForMe) anyFree = true;
+    const row = el('div',{class:'claim-row'});
+    row.appendChild(el('span',{class:'claim-name', text:pl.n}));
+    if(lockedForMe){
+      row.appendChild(el('span',{class:'seat-reserved', text:'ждёт приглашённого'}));
+    }
+    const btn = el('button',{class: (taken || lockedForMe) ? 'ghost' : 'primary',
+      style:'font-size:11px; padding:8px 12px;',
+      text: taken ? 'Занято' : (lockedForMe ? 'Забронировано' : 'Это я')});
+    if(taken || lockedForMe){ btn.setAttribute('disabled','disabled'); }
+    else{
+      btn.onclick = ()=>{
+        btn.setAttribute('disabled','disabled');
+        claimSeat(code, i, myDeviceId, s).then(result=>{
+          if(result==='taken'){
+            seatErr.textContent = 'Кто-то успел выбрать это место на секунду раньше — выбери другого игрока.';
+            btn.removeAttribute('disabled');
+            return;
+          }
+          rememberRoom(code, true);
+          if(typeof dismissInvite === 'function') dismissInvite(code).catch(()=>{});
+        });
+      };
+    }
+    row.appendChild(btn);
+    claimPanel.appendChild(row);
+  });
+  if(!anyFree){
+    claimPanel.appendChild(el('p',{class:'tiny', style:'margin-top:10px;', text:'Все места уже закреплены за другими устройствами. Если это твоё место — попроси того, кто его занял, нажать «Это не я» в блоке комнаты.'}));
+  }
+  claimPanel.appendChild(seatErr);
+  return claimPanel;
+}
+
+// Сколько мест ещё не закреплено за устройствами
+function unclaimedSeats(s){
+  const claims = normalizeSlots(s.claims, s.p.length);
+  return s.p.map((pl,i)=>({pl,i})).filter(x=>!claims[x.i]);
+}
+
 function appendRosterPanel(app, s, myIdx){
+  // Карточки показываем только когда все игроки заняли свои места: пока состав
+  // не собран, открытые досье всё равно неполные, а раскрытия ещё не начались.
+  const pending = unclaimedSeats(s);
+  if(pending.length > 0){
+    const waitPanel = el('div',{class:'panel fade-in-up', 'data-tag':'Сбор группы'});
+    const total = s.p.length;
+    const ready = total - pending.length;
+
+    const head = el('div',{class:'lobby-progress'});
+    head.appendChild(el('span',{class:'lobby-count', text:ready+' / '+total}));
+    const bar = el('span',{class:'lobby-bar'});
+    bar.appendChild(el('i',{style:'width:'+Math.round(ready/total*100)+'%'}));
+    head.appendChild(bar);
+    waitPanel.appendChild(head);
+
+    waitPanel.appendChild(el('p',{class:'tiny', style:'margin:10px 0 8px;',
+      text:'Личные дела откроются, когда все займут свои места. Ждём:'}));
+
+    const list = el('div',{class:'lobby-waiting'});
+    pending.forEach(x=>{
+      const row = el('div',{class:'lobby-person'});
+      row.appendChild(el('span',{class:'lobby-dot'}));
+      row.appendChild(el('span',{text:x.pl.n}));
+      list.appendChild(row);
+    });
+    waitPanel.appendChild(list);
+    app.appendChild(waitPanel);
+    return;
+  }
+
   const boardPanel = el('div',{class:'panel', 'data-tag':'Личные дела претендентов'});
   boardPanel.appendChild(renderRoster(s, {highlightTurn:true, ownIdx:myIdx}));
   app.appendChild(boardPanel);
@@ -4274,7 +4514,10 @@ function renderLanding(){
         html:'<b>'+(inv.from||'Игрок')+'</b> зовёт в комнату <b>'+inv.code+'</b>'}));
       const go = el('button',{class:'primary', text:'Войти'});
       go.onclick = ()=>{
-        dismissInvite(inv.code);
+        // Приглашение НЕ удаляем здесь: его удаление дёргает подписку на
+        // приглашения, та перерисовывала главную поверх уже начатого входа —
+        // отсюда «зависание» и потеря комнаты при обновлении вкладки.
+        // Оно снимется само, когда игрок займёт место в этой комнате.
         document.body.classList.remove('hide-chrome');
         history.replaceState(null,'', location.pathname + '?room=' + inv.code);
         subscribeRoom(inv.code);
@@ -4357,6 +4600,7 @@ function renderLobby(){
     const grid = el('div',{class:'grid6'});
     const inputs = [];
     const invitedUids = []; // кого позвать из друзей после создания комнаты
+    const seatInvites = {}; // индекс поля ввода -> uid друга (бронь места)
     for(let i=0;i<MAX_PLAYERS;i++){
       const wrap = el('div');
       wrap.appendChild(el('label',{text:'Игрок '+(i+1)+' (можно оставить пустым)'}));
@@ -4384,6 +4628,9 @@ function renderLobby(){
             const free = inputs.find(inp=>!inp.value.trim());
             if(!free){ return; }
             free.value = f.nick.slice(0,16);
+            // Запоминаем, в какое именно поле сел друг: это место будет
+            // забронировано за ним, и занять его смогут только он сам.
+            seatInvites[inputs.indexOf(free)] = f.uid;
             if(invitedUids.indexOf(f.uid) === -1) invitedUids.push(f.uid);
             chip.disabled = true;
             chip.classList.add('primary');
@@ -4401,7 +4648,11 @@ function renderLobby(){
     const btn = el('button',{class:'primary', text:'Создать игру'});
     const err = el('div',{class:'error-msg', text:''});
     btn.onclick = ()=>{
-      const names = inputs.map(i=>i.value.trim()).filter(v=>v.length>0);
+      // Пустые поля отбрасываются, поэтому индексы мест сдвигаются —
+      // брони пересчитываем по тем же уцелевшим полям, а не по исходным номерам.
+      const kept = [];
+      inputs.forEach((inp, i)=>{ if(inp.value.trim()) kept.push(i); });
+      const names = kept.map(i=>inputs[i].value.trim());
       if(names.length < MIN_PLAYERS){
         err.textContent = 'Впиши хотя бы '+MIN_PLAYERS+' имени — иначе бункер сразу окажется полным, и играть будет не в кого.';
         return;
@@ -4411,6 +4662,7 @@ function renderLobby(){
         return;
       }
       const s = makeGame(names);
+      s.reserved = kept.map(i=>seatInvites[i] || null);
       const code = genRoomCode();
       db.ref('rooms/'+code).set(s).then(()=>{
         invitedUids.forEach(uid=>{ inviteFriendToRoom(uid, code).catch(()=>{}); });
@@ -5087,7 +5339,7 @@ function renderGame(s, code){
     const idRow = el('div',{class:'row', style:'margin-top:11px; padding-top:10px; border-top:1px solid var(--line-soft); justify-content:space-between;'});
     idRow.appendChild(el('div',{class:'tiny', html:'Ты играешь за: <b style="color:var(--card-own)">'+s.p[myIdx].n+'</b>'}));
     const resetBtn = el('button',{class:'ghost', style:'font-size:10.5px; padding:7px 11px;', text:'Это не я'});
-    resetBtn.onclick = ()=>{ if(confirm('Освободить это место? Придётся выбрать его заново.')) releaseSeat(code, myIdx); };
+    resetBtn.onclick = ()=>{ if(confirm('Освободить это место? Придётся выбрать его заново.')) releaseSeat(code, myIdx, s); };
     idRow.appendChild(resetBtn);
     badgePanel.appendChild(idRow);
   }
@@ -5134,6 +5386,34 @@ function renderGame(s, code){
 
   const turnIdx = currentTurnPlayer(s);
   const turnName = turnIdx>=0 ? s.p[turnIdx].n : '—';
+
+  // ---- Игра не начинается, пока не собрался весь состав ----
+  // До этого момента раскрывать характеристики и голосовать нельзя: иначе первый
+  // успевший занять место ходил бы вслепую, не видя ни карточек, ни соперников.
+  // Финальный экран под это правило не подпадает — итоги смотреть можно всегда.
+  const pendingSeats = unclaimedSeats(s);
+  if(pendingSeats.length > 0 && s.ph !== 'end'){
+    document.getElementById('statusLine').textContent =
+      'сбор группы · ' + (s.p.length - pendingSeats.length) + ' из ' + s.p.length;
+
+    const gateBanner = el('div',{class:'turn-banner'});
+    gateBanner.appendChild(el('div',{html:'<span class="cursor">▮</span> Ожидание игроков'}));
+    gateBanner.appendChild(el('div',{class:'phase-pill', text:'СБОР ГРУППЫ'}));
+    col.appendChild(gateBanner);
+
+    appendRosterPanel(col, s, myIdx); // сама покажет панель ожидания со списком
+
+    if(myIdx === -1){
+      // Место ещё не занято — показываем выбор личности прямо здесь
+      col.appendChild(buildClaimPanel(s, code));
+    } else {
+      const readyPanel = el('div',{class:'panel fade-in-up', 'data-tag':'Действие'});
+      readyPanel.appendChild(el('p',{class:'tiny',
+        html:'Ты на месте — играешь за <b>'+s.p[myIdx].n+'</b>. Раскрытие начнётся автоматически, как только к комнате подключатся остальные. Ссылку-приглашение можно скопировать выше.'}));
+      col.appendChild(readyPanel);
+    }
+    return;
+  }
 
   if(s.ph==='end'){
     document.getElementById('statusLine').textContent = 'симуляция завершена';
@@ -5522,39 +5802,7 @@ function renderGame(s, code){
   // ---- Место ещё не закреплено за этим устройством: показываем экран выбора личности,
   // без доступа к какой-либо панели действий и без возможности заглянуть в чужие данные ----
   if(myIdx === -1){
-    const claimPanel = el('div',{class:'panel fade-in-up', 'data-tag':'Определение личности'});
-    claimPanel.appendChild(el('p',{text:'Это устройство ещё не привязано ни к одному игроку в этой комнате. Выбери, кем из списка являешься именно ты — после этого место закрепится только за твоим браузером, и никто другой (включая тебя с другого устройства) не увидит твои скрытые характеристики.'}));
-    const seatErr = el('div',{class:'error-msg', text:''});
-    let anyFree = false;
-    s.p.forEach((pl,i)=>{
-      const taken = !!s.claims[i];
-      if(!taken) anyFree = true;
-      const row = el('div',{class:'claim-row'});
-      row.appendChild(el('span',{class:'claim-name', text:pl.n}));
-      const btn = el('button',{class: taken ? 'ghost' : 'primary', style:'font-size:11px; padding:8px 12px;', text: taken ? 'Занято' : 'Это я'});
-      if(taken){ btn.setAttribute('disabled','disabled'); }
-      else{
-        btn.onclick = ()=>{
-          btn.setAttribute('disabled','disabled');
-          claimSeat(code, i, myDeviceId).then(result=>{
-            if(result==='taken'){
-              seatErr.textContent = 'Кто-то успел выбрать это место на секунду раньше — выбери другого игрока.';
-              return;
-            }
-            rememberRoom(code, true);
-            // Ник и аватар из профиля подставит syncSeatIdentity при перерисовке —
-            // она же восстановит их, если запись не пройдёт с первого раза.
-          });
-        };
-      }
-      row.appendChild(btn);
-      claimPanel.appendChild(row);
-    });
-    if(!anyFree){
-      claimPanel.appendChild(el('p',{class:'tiny', style:'margin-top:10px;', text:'Все места уже закреплены за другими устройствами. Если это твоё место — попроси того, кто его занял, нажать «Это не я (сбросить место)» в шапке комнаты.'}));
-    }
-    claimPanel.appendChild(seatErr);
-    col.appendChild(claimPanel);
+    col.appendChild(buildClaimPanel(s, code));
     return;
   }
 
